@@ -2,6 +2,8 @@ package router
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +17,7 @@ import (
 	"github.com/mostlygeek/llama-swap/internal/logmon"
 	"github.com/mostlygeek/llama-swap/internal/process"
 	"github.com/mostlygeek/llama-swap/internal/router/scheduler"
+	"github.com/mostlygeek/llama-swap/internal/swaputil"
 )
 
 // These tests cover baseRouter's own machinery — the run loop, process
@@ -610,10 +613,56 @@ func TestBaseRouter_ConcurrencyLimitRejectsBeforeLoadingStream(t *testing.T) {
 	if strings.Contains(w.Body.String(), "llama-swap loading model") {
 		t.Fatalf("429 body contains loading stream: %q", w.Body.String())
 	}
+	// OpenAI clients read body["error"]["message"], so "error" must decode as
+	// an object rather than a bare string.
+	var envelope swaputil.ErrorEnvelope
+	if err := json.Unmarshal(w.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("429 body is not an OpenAI error envelope: %v, body=%q", err, w.Body.String())
+	}
+	if envelope.Error.Message == "" || envelope.Error.Type != swaputil.ErrorTypeRateLimit {
+		t.Fatalf("429 error=%+v, want a rate_limit_error with a message", envelope.Error)
+	}
 
 	close(bProc.serveBlock)
 	for name, ch := range map[string]chan struct{}{"b": bDone, "a1": aDone1, "a2": aDone2} {
 		waitSignal(t, ch, name+" request finish")
+	}
+}
+
+// TestBaseRouter_DispatchErrorFramedIntoLoadingStream covers the second half of
+// #1029. Once the loading stream has committed its 200, an error can only reach
+// the client in-band: swaputil.SendError's status is dropped and its JSON body
+// lands as a bare line that every SSE parser discards, leaving the caller with
+// a truncated stream, no [DONE], and no reason.
+func TestBaseRouter_DispatchErrorFramedIntoLoadingStream(t *testing.T) {
+	sendLoading := true
+	conf := config.Config{
+		HealthCheckTimeout: 5,
+		Models:             map[string]config.ModelConfig{"a": {SendLoadingState: &sendLoading}},
+	}
+	a := newFakeProcess("a")
+	a.ensureErr = fmt.Errorf("upstream command exited prematurely")
+
+	b := newTestBaseWithConfig(t, conf, map[string]process.Process{"a": a}, &stubPlanner{})
+
+	w := httptest.NewRecorder()
+	b.ServeHTTP(w, newStreamRequest("a"))
+
+	body := w.Body.String()
+	// The loading text is streamed a few characters per frame, so reassemble it.
+	if content := extractStreamedContent(body); !strings.Contains(content, "llama-swap loading model") {
+		t.Fatalf("loading stream did not start, so this is not the path under test: %q", content)
+	}
+	for _, line := range strings.Split(strings.TrimRight(body, "\n"), "\n") {
+		if line != "" && !strings.HasPrefix(line, "data: ") {
+			t.Errorf("line %q is not an SSE field; a client would silently ignore it", line)
+		}
+	}
+	if !strings.Contains(body, "upstream command exited prematurely") {
+		t.Errorf("dispatch error never reached the client: %q", body)
+	}
+	if !strings.HasSuffix(strings.TrimRight(body, "\n"), "data: [DONE]") {
+		t.Errorf("stream not terminated with [DONE]: %q", body)
 	}
 }
 
