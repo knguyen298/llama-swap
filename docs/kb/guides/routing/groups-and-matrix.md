@@ -119,6 +119,42 @@ Two things worth internalising:
 `evict_costs` (default 1) is how you express "this one is painful to reload".
 Give slow cold-starting backends a high cost.
 
+### Catch models absent from set leaves with `+auto:orphans`
+
+Use the reserved reference `+auto:orphans` for models not referenced by a leaf in
+any user-authored set. Vars resolve to their real model IDs before this check;
+references such as `+base` are not leaves and do not define more models.
+The set is named `auto:orphans`; the leading `+` retains the existing set-reference
+syntax. Colons are supported in reference names, not bare model/var identifiers.
+The former `+undefined` spelling is no longer automatic: it requires a
+user-defined set named `undefined`.
+
+The orphan list is computed once at compile time and sorted by model ID, making
+the synthesized expression deterministic. For example, if `a` is named by a
+leaf while `b` and `c` are not, `+auto:orphans` behaves as `(b | c)`:
+
+```yaml
+sets:
+  always:  "task-small & embed-model"
+  main:    "+always & moe-medium & (dense-a | dense-b)"
+  scratch: "+always & +auto:orphans"
+```
+
+If there are no orphans, the `+auto:orphans` term is dropped. Empty results also
+propagate through references, so `outer: "+empty & x"` behaves as `x` when
+`empty` ultimately resolves only to an empty `+auto:orphans`. A set containing
+only an empty `+auto:orphans` is never selectable.
+
+A user-defined set named `auto:orphans` takes precedence and disables synthesis.
+When `+auto:orphans` is referenced, startup and reload log one of:
+
+- `matrix: synthesized set "auto:orphans" = (modelA | modelB | ...)`
+- `matrix: synthesized set "auto:orphans" is empty; +auto:orphans terms dropped`
+- `matrix: set "auto:orphans" is user-defined; orphan synthesis disabled`
+
+Editing `models:` changes the orphan list on the next configuration reload by
+design.
+
 ## Which one?
 
 Use **group** if your setup is describable as "these run together, those swap
