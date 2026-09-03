@@ -1,3 +1,4 @@
+import { UI_BASE } from "./basePath";
 import type { SpeechGenerationRequest } from "./types";
 import { playgroundSessionHeaders } from "./playgroundSession";
 
@@ -13,7 +14,7 @@ export async function generateSpeech(
     voice,
   };
 
-  const response = await fetch("/v1/audio/speech", {
+  const response = await fetch(`${UI_BASE}/v1/audio/speech`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
