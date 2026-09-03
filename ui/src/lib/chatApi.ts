@@ -178,7 +178,9 @@ export function buildRequest(
   messages: ChatMessage[],
   options?: ChatOptions
 ): { url: string; body: object } {
-  const url = "/" + endpoint;
+  // Served through the UI's /api mirror of the model endpoints; see
+  // MODEL_API_PREFIX in modelUtils.ts.
+  const url = "/api/" + endpoint;
   if (options?.tools?.length && endpoint !== "v1/chat/completions") {
     throw new Error("Tool calling is only supported on /v1/chat/completions");
   }

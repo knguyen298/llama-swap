@@ -161,6 +161,32 @@ apiKeys:
   - "${env.API_KEY_1}"
   - "${env.API_KEY_2}"
 
+# auth: how the web UI is authenticated
+# - optional, default: ui: apiKeys (apiKeys guard the web UI too)
+# - the inference endpoints (/v1/*, /models, /upstream/*, /comfyui/*) and
+#   /metrics, /unload, /running always require apiKeys, whatever ui is set to
+# - the web UI reaches the model endpoints through /api/v1/, /api/upstream/,
+#   /api/comfyui/ and /api/sdapi/, which follow the ui mode below
+auth:
+  # ui: apiKeys | trustedHeader | none
+  # - apiKeys: /ui/, /api/* and /logs require an API key (default)
+  # - trustedHeader: they accept only requests carrying trustedHeader, set by
+  #   an authenticating reverse proxy (Authelia, oauth2-proxy, ...); API keys
+  #   never open the web UI
+  # - none: they have no authentication; a reverse proxy must gate them
+  ui: trustedHeader
+
+  # trustedHeader: header the proxy sets for authenticated users
+  # - required with ui: trustedHeader, Authelia and oauth2-proxy use Remote-User
+  trustedHeader: Remote-User
+
+  # trustedProxies: IPs or CIDR ranges allowed to present trustedHeader
+  # - optional, default: [] which accepts the header from any source
+  # - only leave empty when nothing but the proxy can reach llama-swap
+  # - checked against the connecting address, X-Forwarded-For is ignored
+  trustedProxies:
+    - 172.18.0.0/16
+
 # upstream: controls behaviour of the /upstream passthrough endpoint
 # - optional, default: empty dictionary
 # - recommended to only use in special use cases. Leaving it as the
