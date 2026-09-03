@@ -3,7 +3,7 @@ title: Connecting an MCP client to llama-swap
 summary: Point any MCP client at /api/mcp to search and read llama-swap's documentation.
 category: guides
 tags: [mcp, tools, agent, api, integration]
-config_keys: [apiKeys]
+config_keys: [apiKeys, auth.ui]
 updated: 2026-09-04
 ---
 
@@ -49,6 +49,11 @@ Authorization: Bearer sk-your-key
 `x-api-key` and HTTP Basic work too. With no `apiKeys` configured the endpoint
 is open, so treat it the same way you treat the rest of llama-swap — see
 `guides/api-integration/api-keys-and-auth`.
+
+The web UI reaches the same server at `/ui/api/mcp`, which follows `auth.ui`.
+With `ui: none` that path is open to whatever the reverse proxy lets through,
+so make sure that the proxy gates `/ui/`. `config__get_config` shows the
+running configuration.
 
 ## The tools
 
