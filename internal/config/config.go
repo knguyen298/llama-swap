@@ -199,6 +199,9 @@ type Config struct {
 	// support API keys, see issue #433, #50, #251
 	RequiredAPIKeys []string `yaml:"apiKeys"`
 
+	// auth lets a reverse proxy vouch for web UI users via a trusted header
+	Auth AuthConfig `yaml:"auth"`
+
 	// support remote peers, see issue #433, #296
 	Peers PeerDictionaryConfig `yaml:"peers"`
 

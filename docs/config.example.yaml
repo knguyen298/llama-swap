@@ -161,6 +161,29 @@ apiKeys:
   - "${env.API_KEY_1}"
   - "${env.API_KEY_2}"
 
+# auth: let an authenticating reverse proxy (Authelia, oauth2-proxy, ...)
+# vouch for web UI users
+# - optional, default: empty (apiKeys guard the web UI too)
+# - when trustedHeader is set:
+#   - /ui/, /api/*, /logs and /logs/stream accept only requests carrying
+#     that header; API keys no longer open the web UI
+#   - /v1/*, /models, /upstream/*, /comfyui/*, /metrics, /unload and /running
+#     accept an API key or the header, so the Playground works from the
+#     browser and API clients keep using apiKeys
+# - configure the proxy to forward the header on authenticated requests and
+#   to bypass login for /v1/ so API clients can present their key
+auth:
+  # trustedHeader: header the proxy sets for authenticated users
+  # - Authelia and oauth2-proxy use Remote-User
+  trustedHeader: Remote-User
+
+  # trustedProxies: IPs or CIDR ranges allowed to present trustedHeader
+  # - optional, default: [] which accepts the header from any source
+  # - only leave empty when nothing but the proxy can reach llama-swap
+  # - checked against the connecting address, X-Forwarded-For is ignored
+  trustedProxies:
+    - 172.18.0.0/16
+
 # upstream: controls behaviour of the /upstream passthrough endpoint
 # - optional, default: empty dictionary
 # - recommended to only use in special use cases. Leaving it as the

@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/subtle"
+	"net"
 	"net/http"
 	"strings"
 
@@ -11,8 +13,10 @@ import (
 
 // CreateAuthMiddleware returns middleware that validates API keys when the
 // config declares any. It accepts the key via Authorization: Bearer,
-// Authorization: Basic (password field), or x-api-key. When no keys are
-// configured the middleware is a pass-through.
+// Authorization: Basic (password field), or x-api-key. When auth.trustedHeader
+// is configured a request vouched for by the proxy is accepted as well, so a
+// web UI session can reach inference. When no keys are configured the
+// middleware is a pass-through.
 func CreateAuthMiddleware(cfg config.Config) chain.Middleware {
 	keys := cfg.RequiredAPIKeys
 	return func(next http.Handler) http.Handler {
@@ -20,24 +24,70 @@ func CreateAuthMiddleware(cfg config.Config) chain.Middleware {
 			return next
 		}
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			provided := swaputil.ExtractAPIKey(r)
-
-			valid := false
-			for _, key := range keys {
-				if provided == key {
-					valid = true
-					break
-				}
-			}
-			if !valid {
+			if !hasValidAPIKey(r, keys) && !isTrustedUser(r, cfg.Auth) {
 				w.Header().Set("WWW-Authenticate", `Basic realm="llama-swap"`)
 				swaputil.SendResponse(w, r, http.StatusUnauthorized, "unauthorized: invalid or missing API key")
 				return
 			}
-
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// CreateUIAuthMiddleware returns the middleware for the web UI and the
+// endpoints only it uses. Without auth.trustedHeader it is the API key
+// middleware, so apiKeys guard the UI as they always have. With it, only
+// requests vouched for by the proxy are accepted; API keys never open the UI.
+func CreateUIAuthMiddleware(cfg config.Config) chain.Middleware {
+	if !cfg.Auth.Enabled() {
+		return CreateAuthMiddleware(cfg)
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !isTrustedUser(r, cfg.Auth) {
+				swaputil.SendResponse(w, r, http.StatusUnauthorized,
+					"unauthorized: request did not come through the authenticating proxy")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func hasValidAPIKey(r *http.Request, keys []string) bool {
+	provided := swaputil.ExtractAPIKey(r)
+	if provided == "" {
+		return false
+	}
+	for _, key := range keys {
+		if subtle.ConstantTimeCompare([]byte(provided), []byte(key)) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// isTrustedUser reports whether the request carries a non-empty trusted
+// header and arrived from a trusted proxy.
+func isTrustedUser(r *http.Request, auth config.AuthConfig) bool {
+	if !auth.Enabled() {
+		return false
+	}
+	if strings.TrimSpace(r.Header.Get(auth.TrustedHeader)) == "" {
+		return false
+	}
+	return auth.IsTrustedSource(remoteIP(r))
+}
+
+// remoteIP parses the peer address of the connection. It deliberately ignores
+// X-Forwarded-For, which anyone can set; trustedProxies is about who is
+// connected to us, not who they claim to relay.
+func remoteIP(r *http.Request) net.IP {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	return net.ParseIP(host)
 }
 
 // CreateRequestContextMiddleware returns middleware that extracts model and

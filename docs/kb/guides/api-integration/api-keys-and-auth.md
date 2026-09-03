@@ -1,10 +1,10 @@
 ---
 title: API keys, access control, and keeping secrets out of your config
-summary: apiKeys authentication has no per-key rate limits or user permissions; use env macros for secrets.
+summary: apiKeys authentication has no per-key rate limits or user permissions; auth.trustedHeader lets a reverse proxy own web UI login; use env macros for secrets.
 category: guides
-tags: [security, api-keys, auth, secrets, env, rate-limit, users, permissions, access-control]
-config_keys: [apiKeys, macros, peers.*.apiKey, models.*.env]
-updated: 2026-08-25
+tags: [security, api-keys, auth, secrets, env, rate-limit, users, permissions, access-control, web-ui, reverse-proxy, authelia, trusted-header]
+config_keys: [apiKeys, auth.trustedHeader, auth.trustedProxies, macros, peers.*.apiKey, models.*.env]
+updated: 2026-09-02
 ---
 
 # API keys and keeping secrets out of your config
@@ -20,7 +20,9 @@ apiKeys:
 ```
 
 Clients may present it as `Authorization: Bearer <key>`, `x-api-key: <key>`, or
-HTTP Basic. The web UI and everything under `/api/` are covered too.
+HTTP Basic. The web UI and everything under `/api/` are covered too, unless
+a reverse proxy vouches for UI users through `auth.trustedHeader` (see
+below).
 
 Generate a real one:
 
@@ -38,6 +40,64 @@ front of llama-swap when you need those controls.
 **`apiKeys` is not a substitute for a firewall.** llama-swap starts processes
 on your machine. Do not expose it to the internet on the strength of a bearer
 token alone.
+
+## Letting a reverse proxy own web UI login
+
+With only `apiKeys` set, any client key also opens the web UI, and people get
+an HTTP Basic prompt. If a proxy such as Authelia or oauth2-proxy already
+logs people in, let it vouch for them instead:
+
+```yaml
+apiKeys:
+  - "${env.LLAMA_SWAP_KEY}"
+auth:
+  trustedHeader: Remote-User
+  trustedProxies: ["172.18.0.0/16"]
+```
+
+With `auth.trustedHeader` set:
+
+- `/ui/`, `/api/*` (including `/api/mcp`), `/logs` and `/logs/stream` accept
+  only requests carrying that header. An API key gets a 401 there, always.
+  These are the paths only the UI uses.
+- Everything else accepts an API key **or** the header: `/v1/*` including
+  `/v1/models`, `/models`, `/upstream/*`, `/comfyui/*`, `/metrics`, `/unload`
+  and `/running`. That is how the Playground and the upstream links work from
+  the browser without a key, and how API clients and Prometheus keep using
+  keys.
+
+This is the same trusted header pattern Grafana's auth proxy and Open WebUI
+use. The proxy is the only source of truth about who a person is, so two
+things must hold:
+
+- **Only the proxy can reach llama-swap.** Bind to localhost or a Docker
+  network the proxy shares. Anyone who can connect directly can add the
+  header themselves.
+- **`trustedProxies` names the proxy.** It lists the IPs or CIDR ranges
+  allowed to present the header, checked against the connecting address.
+  `X-Forwarded-For` is ignored on purpose. Leave it empty only when the
+  network already guarantees the first point; llama-swap logs a warning at
+  startup in that case.
+
+On the proxy side, forward the header on authenticated requests and bypass
+login for `/v1/` so API clients can present their key. For Caddy with
+Authelia:
+
+```
+forward_auth authelia:9091 {
+    uri /api/authz/forward-auth
+    copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
+}
+reverse_proxy llama-swap:8080
+```
+
+with an Authelia access control rule of `policy: bypass` for
+`^/v1/` and `policy: one_factor` (or `two_factor`) for `^/(ui|api|logs)`.
+Authelia does not set `Remote-User` on bypassed requests, so a client on
+`/v1/` without a session still has to present an API key.
+
+`auth.trustedHeader` does not change what an API key can do outside the UI.
+An inference key can still call `/unload`, as it can today.
 
 ## Keep the keys out of the file
 
@@ -98,5 +158,5 @@ the problem survives.
 
 ## Related
 
-- `reference/config/apiKeys`, `reference/config/peers`
+- `reference/config/apiKeys`, `reference/config/auth`, `reference/config/peers`
 - `guides/configuration/macros` — how env macros resolve
