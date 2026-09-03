@@ -1,5 +1,6 @@
 import { writable, type Writable } from "svelte/store";
 import type { APIEventEnvelope, LogData, LogSource } from "../lib/types";
+import { UI_BASE } from "../lib/basePath";
 
 const LOG_LENGTH_LIMIT = 1024 * 100; /* 100KB of log data */
 
@@ -38,7 +39,7 @@ export function handleLogEventMessage(data: string): void {
 export function connectLogStreams(sources: LogSource[]): () => void {
   const query = new URLSearchParams();
   for (const source of sources) query.append("stream", source);
-  const url = `/api/events/logs?${query}`;
+  const url = `${UI_BASE}/api/events/logs?${query}`;
   const clear = () => sources.forEach((source) => logStores[source].set(""));
 
   let eventSource: EventSource | null = null;
