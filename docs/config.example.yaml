@@ -161,6 +161,17 @@ apiKeys:
   - "${env.API_KEY_1}"
   - "${env.API_KEY_2}"
 
+# auth: how the web UI is authenticated
+# - optional, default: ui: apiKeys (apiKeys guard the web UI too)
+# - every path outside /ui/ always requires apiKeys, whatever ui is set to
+# - the web UI makes all of its requests under /ui/, for example
+#   /ui/v1/chat/completions, and the server runs the same handler as /v1/
+auth:
+  # ui: apiKeys | none
+  # - apiKeys: /ui/ requires an API key (default)
+  # - none: /ui/ has no authentication; a reverse proxy must gate it
+  ui: none
+
 # tailcat: configure models exposed over Tailcat virtual TCP port 80
 # - requires -listen-tailcat /path/to/server.private.json to start the listener
 # - when -listen-tailcat is set, models must contain at least one public ID

@@ -1,3 +1,4 @@
+import { UI_BASE } from "./basePath";
 import type { ChatMessage, ContentPart } from "./types";
 import { playgroundSessionHeaders } from "./playgroundSession";
 
@@ -178,7 +179,7 @@ export function buildRequest(
   messages: ChatMessage[],
   options?: ChatOptions
 ): { url: string; body: object } {
-  const url = "/" + endpoint;
+  const url = UI_BASE + "/" + endpoint;
   if (options?.tools?.length && endpoint !== "v1/chat/completions") {
     throw new Error("Tool calling is only supported on /v1/chat/completions");
   }

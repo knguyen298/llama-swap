@@ -83,6 +83,10 @@ $ curl -X POST http://localhost:8080/api/models/unload/qwen-coder
 The web UI's model list has an unload button per model that hits the same
 endpoint.
 
+The web UI calls the same handler at `/ui/api/models/unload`, which follows
+`auth.ui` (see `guides/api-integration/api-keys-and-auth`). The `/api/` path
+above always requires an API key.
+
 ## Picking a value
 
 - **Single GPU, one model at a time.** TTL buys you little — swapping already

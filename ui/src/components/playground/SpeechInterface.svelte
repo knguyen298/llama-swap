@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { UI_BASE } from "../../lib/basePath";
   import { hasListedModels } from "../../stores/api";
   import { persistentStore } from "../../stores/persistent";
   import { createPlaygroundInterface } from "../../lib/playgroundInterface";
@@ -100,7 +101,7 @@
     isLoadingVoices = true;
 
     try {
-      const response = await fetch(`/v1/audio/voices?model=${encodeURIComponent(model)}`, {
+      const response = await fetch(`${UI_BASE}/v1/audio/voices?model=${encodeURIComponent(model)}`, {
         cache: "no-store",
         headers: playgroundSessionHeaders,
       });
