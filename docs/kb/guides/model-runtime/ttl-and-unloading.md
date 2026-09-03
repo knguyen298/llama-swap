@@ -83,6 +83,10 @@ $ curl -X POST http://localhost:8080/api/models/unload/qwen-coder
 The web UI's model list has an unload button per model that hits the same
 endpoint.
 
+The web UI calls the same handler at `/ui/api/models/unload`, which follows
+`auth.ui` (see `guides/api-integration/api-keys-and-auth`). The `/api/` path
+above always requires an API key.
+
 ## Pausing inference
 
 An unload only lasts until the next request loads a model again. To keep the
@@ -101,6 +105,7 @@ While paused, every request for a local model (`/v1/...`, `/upstream/...`,
 `all inference is paused`, and startup preloading is skipped. Requests that
 are running when you pause are stopped with their model. Peer models are not
 affected. A config reload keeps the pause; restarting llama-swap clears it.
+
 
 ## Picking a value
 

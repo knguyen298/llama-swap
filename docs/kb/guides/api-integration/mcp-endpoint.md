@@ -3,7 +3,7 @@ title: Connecting an MCP client to llama-swap
 summary: Point any MCP client at /api/mcp to search llama-swap's documentation and source code.
 category: guides
 tags: [mcp, tools, agent, api, integration, source, code, help, disable]
-config_keys: [apiKeys, helpagent.disable]
+config_keys: [apiKeys, auth.ui, helpagent.disable]
 updated: 2026-10-23
 ---
 
@@ -50,6 +50,11 @@ Authorization: Bearer sk-your-key
 is open, so treat it the same way you treat the rest of llama-swap — see
 `guides/api-integration/api-keys-and-auth`.
 
+The web UI reaches the same server at `/ui/api/mcp`, which follows `auth.ui`.
+With `ui: none` that path is open to whatever the reverse proxy lets through,
+so make sure that the proxy gates `/ui/`. `config__get_config` shows the
+running configuration.
+
 ## Turning it off
 
 `helpagent.disable` turns off both the UI's Help page and this endpoint:
@@ -66,6 +71,7 @@ on a config reload. The default is `false`.
 Turn it off when nobody uses Help, or when this instance should not offer its
 configuration and source code tools at all. Protecting the endpoint with
 `apiKeys` is the alternative when Help should stay.
+
 
 ## The tools
 
