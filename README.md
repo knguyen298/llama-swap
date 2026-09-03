@@ -60,6 +60,7 @@ Built in Go for performance and simplicity, llama-swap has zero dependencies and
   - `/health` - just returns "OK"
   - `/metrics` - system and GPU metrics for prometheus
 - ✅ API Key support - define keys to restrict access to API endpoints
+  - `auth.ui` hands web UI login to a reverse proxy (Authelia, oauth2-proxy) while `/v1/` keeps requiring a key, see [API keys and access control](docs/kb/guides/api-integration/api-keys-and-auth.md)
 - ✅ Customization
   - Switch model ID routing at runtime with profiles
   - Run concurrent models with a custom DSL swap matrix ([#643](https://github.com/mostlygeek/llama-swap/issues/643))
