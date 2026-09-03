@@ -1,3 +1,4 @@
+import { UI_BASE } from "./basePath";
 import { playgroundSessionHeaders } from "./playgroundSession";
 import type { ToolDefinition } from "./chatApi";
 
@@ -13,7 +14,7 @@ import type { ToolDefinition } from "./chatApi";
  * can be unit tested without a network.
  */
 
-export const MCP_ENDPOINT = "/api/mcp";
+export const MCP_ENDPOINT = `${UI_BASE}/api/mcp`;
 export const MCP_PROTOCOL_VERSION = "2026-07-28";
 
 /** JSON-RPC error code for a protocol version the server does not speak. */
