@@ -16,11 +16,11 @@ function makeModel(overrides: Partial<Model> = {}): Model {
 
 describe("modelServerPath", () => {
   it("uses the ComfyUI endpoint for the reserved model", () => {
-    expect(modelServerPath("comfyui_auto")).toBe("/comfyui/");
+    expect(modelServerPath("comfyui_auto")).toBe("/api/comfyui/");
   });
 
   it("uses the encoded upstream endpoint for other models", () => {
-    expect(modelServerPath("org/model name")).toBe("/upstream/org%2Fmodel%20name/");
+    expect(modelServerPath("org/model name")).toBe("/api/upstream/org%2Fmodel%20name/");
   });
 });
 

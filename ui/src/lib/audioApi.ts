@@ -10,7 +10,7 @@ export async function transcribeAudio(
   formData.append("file", file);
   formData.append("model", model);
 
-  const response = await fetch("/v1/audio/transcriptions", {
+  const response = await fetch("/api/v1/audio/transcriptions", {
     method: "POST",
     headers: playgroundSessionHeaders,
     body: formData,
