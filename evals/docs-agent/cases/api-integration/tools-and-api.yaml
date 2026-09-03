@@ -48,6 +48,35 @@
     - Names the top-level apiKeys setting
     - Shows a yaml snippet
 
+- id: auth-ui-behind-proxy
+  question: I run the llama-swap web UI behind Authelia. How do I stop it from asking for an API key while still requiring keys on /v1/?
+  tags: [security]
+  expect_regex: ["auth", "trustedHeader|none"]
+  expect_tools: [docs__search_docs]
+  reference: |
+    Set `auth.ui` to `trustedHeader` (with `auth.trustedHeader: Remote-User`
+    and ideally `auth.trustedProxies`) or to `none`. The web UI, `/api/*` and
+    `/logs` then follow that mode, while `/v1/*` and the other inference
+    endpoints still require `apiKeys`. The proxy must bypass login for `/v1/`
+    and require it for everything else.
+  rubric:
+    - Names the auth.ui setting and at least one of its modes
+    - States that /v1/ still requires an API key
+    - Mentions the proxy must gate the UI paths or forward the header
+
+- id: auth-ui-key-does-not-open-ui
+  question: With auth.ui set to trustedHeader, can a client use its API key to open the web UI or /api/ endpoints?
+  tags: [security]
+  expect_regex: ["401|not|never"]
+  expect_tools: [docs__search_docs]
+  reference: |
+    No. In trustedHeader mode the UI paths accept only requests carrying the
+    trusted header from the proxy; an API key gets a 401 there. Keys work
+    only on the inference and operations endpoints.
+  rubric:
+    - Answers no
+    - Explains that only the trusted header opens the UI paths in that mode
+
 - id: api-keys-out-of-config
   question: How do I keep a peer's API key out of my config file?
   tags: [security, macros]

@@ -672,6 +672,37 @@
             "default": [],
             "description": "Require an API key when making requests to inference endpoints. When empty, authorization will not be checked. Each key is a non-empty string."
         },
+        "auth": {
+            "type": "object",
+            "properties": {
+                "ui": {
+                    "type": "string",
+                    "enum": [
+                        "apiKeys",
+                        "trustedHeader",
+                        "none"
+                    ],
+                    "default": "apiKeys",
+                    "description": "How the web UI, /api/* and /logs are authenticated. apiKeys: require an API key. trustedHeader: accept only requests carrying trustedHeader from an authenticating reverse proxy; API keys never open the web UI. none: no authentication, a reverse proxy must gate them. The inference endpoints (/v1/*, /models, /upstream/*, /comfyui/*) and /metrics, /unload, /running always require apiKeys."
+                },
+                "trustedHeader": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Request header the reverse proxy sets for logged-in users, typically Remote-User. Required with ui: trustedHeader."
+                },
+                "trustedProxies": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "IP addresses or CIDR ranges allowed to present trustedHeader, checked against the connecting address (X-Forwarded-For is ignored). Empty accepts the header from any source, which is only safe when nothing but the proxy can reach llama-swap."
+                }
+            },
+            "additionalProperties": false,
+            "default": {},
+            "description": "Web UI authentication mode. Inference endpoints always use apiKeys."
+        },
         "peers": {
             "type": "object",
             "additionalProperties": {
