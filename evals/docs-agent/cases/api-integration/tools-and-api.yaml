@@ -48,6 +48,21 @@
     - Names the top-level apiKeys setting
     - Shows a yaml snippet
 
+- id: auth-ui-behind-proxy
+  question: I run the llama-swap web UI behind Authelia. How do I stop it from asking for an API key while still requiring keys on /v1/?
+  tags: [security]
+  expect_regex: ["auth", "none"]
+  expect_tools: [docs__search_docs]
+  reference: |
+    Set `auth.ui: none`. The web UI, `/api/*` and `/logs` then have no
+    authentication in llama-swap, while `/v1/*` and the other inference
+    endpoints still require `apiKeys`. The proxy must gate the UI paths and
+    bypass login for `/v1/`.
+  rubric:
+    - Names auth.ui set to none
+    - States that /v1/ still requires an API key
+    - Says the reverse proxy must gate the UI paths
+
 - id: api-keys-out-of-config
   question: How do I keep a peer's API key out of my config file?
   tags: [security, macros]

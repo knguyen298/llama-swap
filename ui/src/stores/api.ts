@@ -278,7 +278,7 @@ interface ModelListRecord {
 
 async function loadPlaygroundModels(request: number): Promise<Model[]> {
   try {
-    const response = await fetch("/v1/models");
+    const response = await fetch("/api/v1/models");
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -444,7 +444,7 @@ export async function cancelInflightRequest(id: string): Promise<void> {
 
 export async function loadModel(model: string, signal?: AbortSignal): Promise<void> {
   try {
-    const response = await fetch(`/upstream/${model}/?_=${Date.now()}`, {
+    const response = await fetch(`/api/upstream/${model}/?_=${Date.now()}`, {
       method: "GET",
       signal,
     });

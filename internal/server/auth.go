@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"crypto/subtle"
 	"net/http"
 	"strings"
 
@@ -11,8 +13,10 @@ import (
 
 // CreateAuthMiddleware returns middleware that validates API keys when the
 // config declares any. It accepts the key via Authorization: Bearer,
-// Authorization: Basic (password field), or x-api-key. When no keys are
-// configured the middleware is a pass-through.
+// Authorization: Basic (password field), or x-api-key. Nothing else is
+// accepted: the inference and operations endpoints behave like any hosted
+// inference API. When no keys are configured the middleware is a
+// pass-through.
 func CreateAuthMiddleware(cfg config.Config) chain.Middleware {
 	keys := cfg.RequiredAPIKeys
 	return func(next http.Handler) http.Handler {
@@ -20,24 +24,75 @@ func CreateAuthMiddleware(cfg config.Config) chain.Middleware {
 			return next
 		}
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			provided := swaputil.ExtractAPIKey(r)
-
-			valid := false
-			for _, key := range keys {
-				if provided == key {
-					valid = true
-					break
-				}
-			}
-			if !valid {
+			if !hasValidAPIKey(r, keys) {
 				w.Header().Set("WWW-Authenticate", `Basic realm="llama-swap"`)
 				swaputil.SendResponse(w, r, http.StatusUnauthorized, "unauthorized: invalid or missing API key")
 				return
 			}
-
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// CreateUIAuthMiddleware returns the middleware for the web UI and the
+// endpoints only it uses, per auth.ui:
+//
+//   - apiKeys (default): the API key middleware, so apiKeys guard the UI as
+//     they always have.
+//   - none: a pass-through. A reverse proxy must gate the UI.
+func CreateUIAuthMiddleware(cfg config.Config) chain.Middleware {
+	if cfg.Auth.UIMode() == config.UIAuthNone {
+		return func(next http.Handler) http.Handler { return next }
+	}
+	return CreateAuthMiddleware(cfg)
+}
+
+func hasValidAPIKey(r *http.Request, keys []string) bool {
+	provided := swaputil.ExtractAPIKey(r)
+	if provided == "" {
+		return false
+	}
+	for _, key := range keys {
+		if subtle.ConstantTimeCompare([]byte(provided), []byte(key)) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// uiModelPrefix is the path prefix under which the web UI reaches the model
+// endpoints (/api/v1/..., /api/upstream/..., /api/comfyui/..., /api/sdapi/...).
+// Those mirrors are guarded by the UI rules instead of apiKeys, so the
+// Playground works in every auth.ui mode while the public paths stay key-only.
+const uiModelPrefix = "/api"
+
+type mirrorPrefixKey struct{}
+
+// stripUIModelPrefix rewrites a mirrored request to its public path and
+// records the prefix so redirects can be built back under it, then hands the
+// request to next, typically the model mux.
+func stripUIModelPrefix(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, uiModelPrefix+"/") {
+			http.NotFound(w, r)
+			return
+		}
+		escaped := swaputil.EscapedPathSuffix(r.URL.EscapedPath(), uiModelPrefix)
+		r2 := r.Clone(context.WithValue(r.Context(), mirrorPrefixKey{}, uiModelPrefix))
+		r2.URL.Path = strings.TrimPrefix(r.URL.Path, uiModelPrefix)
+		r2.URL.RawPath = escaped
+		next.ServeHTTP(w, r2)
+	})
+}
+
+// mirrorPrefix returns the prefix a mirrored request arrived under, or "" for
+// a request on the public path. Handlers that redirect use it so the browser
+// stays under the same prefix.
+func mirrorPrefix(r *http.Request) string {
+	if p, ok := r.Context().Value(mirrorPrefixKey{}).(string); ok {
+		return p
+	}
+	return ""
 }
 
 // CreateRequestContextMiddleware returns middleware that extracts model and

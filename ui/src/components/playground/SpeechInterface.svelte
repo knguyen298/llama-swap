@@ -100,7 +100,7 @@
     isLoadingVoices = true;
 
     try {
-      const response = await fetch(`/v1/audio/voices?model=${encodeURIComponent(model)}`, {
+      const response = await fetch(`/api/v1/audio/voices?model=${encodeURIComponent(model)}`, {
         cache: "no-store",
         headers: playgroundSessionHeaders,
       });

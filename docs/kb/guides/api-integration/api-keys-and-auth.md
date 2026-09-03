@@ -1,10 +1,10 @@
 ---
 title: API keys, access control, and keeping secrets out of your config
-summary: apiKeys authentication has no per-key rate limits or user permissions; use env macros for secrets.
+summary: apiKeys guard inference like any hosted API; auth.ui can hand web UI login to a reverse proxy; use env macros for secrets.
 category: guides
-tags: [security, api-keys, auth, secrets, env, rate-limit, users, permissions, access-control]
-config_keys: [apiKeys, macros, peers.*.apiKey, models.*.env]
-updated: 2026-08-25
+tags: [security, api-keys, auth, secrets, env, rate-limit, users, permissions, access-control, web-ui, reverse-proxy, authelia]
+config_keys: [apiKeys, auth.ui, macros, peers.*.apiKey, models.*.env]
+updated: 2026-09-03
 ---
 
 # API keys and keeping secrets out of your config
@@ -20,7 +20,8 @@ apiKeys:
 ```
 
 Clients may present it as `Authorization: Bearer <key>`, `x-api-key: <key>`, or
-HTTP Basic. The web UI and everything under `/api/` are covered too.
+HTTP Basic. The web UI and everything under `/api/` are covered too, unless
+you hand web UI login to a reverse proxy with `auth.ui` (see below).
 
 Generate a real one:
 
@@ -38,6 +39,56 @@ front of llama-swap when you need those controls.
 **`apiKeys` is not a substitute for a firewall.** llama-swap starts processes
 on your machine. Do not expose it to the internet on the strength of a bearer
 token alone.
+
+## Letting a reverse proxy own web UI login
+
+With only `apiKeys` set, any client key also opens the web UI, and people get
+an HTTP Basic prompt. If a proxy such as Authelia or oauth2-proxy already
+logs people in, hand the web UI to it with `auth.ui: none`:
+
+```yaml
+apiKeys:
+  - "${env.LLAMA_SWAP_KEY}"
+auth:
+  ui: none
+```
+
+`/ui/`, `/api/*` (including `/api/mcp`), `/logs` and `/logs/stream` then have
+no authentication in llama-swap at all. These are the paths only the web UI
+uses.
+
+The inference endpoints are unaffected. `/v1/*` including `/v1/models`, plus
+`/models`, `/upstream/*` and `/comfyui/*`, require an API key in every mode,
+like any hosted inference API, and so do `/metrics`, `/unload` and
+`/running`.
+
+### How the Playground still works
+
+The web UI never holds an API key. It reaches the model endpoints through a
+mirror under `/api`: `/api/v1/chat/completions`, `/api/v1/models`,
+`/api/upstream/<model>/`, `/api/comfyui/` and `/api/sdapi/...`. The mirror
+follows the `auth.ui` mode, so a logged-in person can use the Playground and
+open a model's own web UI, while the public `/v1/` paths stay key-only and
+know nothing about the UI.
+
+Anyone who reaches the UI can therefore also call the mirror by hand. That is
+the intended boundary: UI access means inference through the UI paths, an API
+key means inference through `/v1/`. The two never cross.
+
+### What the proxy has to do
+
+- **Bypass login for the key-guarded paths**: `/v1/` at minimum, plus
+  `/models`, `/upstream/`, `/comfyui/`, `/sdapi/` and the `/metrics`,
+  `/unload`, `/running` endpoints if anything external calls them.
+  llama-swap checks the key itself. Bypassing only `/v1/` is enough for
+  OpenAI and Anthropic style clients.
+- **Require login for everything else**: `/ui/`, `/api/`, `/logs` and `/`.
+- **Publish llama-swap only to the proxy.** With `ui: none` anything that can
+  reach the port has the whole UI, and through the mirror, inference.
+  llama-swap logs a warning at startup as a reminder.
+
+`auth.ui` does not change what an API key can do outside the UI. An inference
+key can still call `/unload`, as it can today.
 
 ## Keep the keys out of the file
 
@@ -98,5 +149,5 @@ the problem survives.
 
 ## Related
 
-- `reference/config/apiKeys`, `reference/config/peers`
+- `reference/config/apiKeys`, `reference/config/auth`, `reference/config/peers`
 - `guides/configuration/macros` — how env macros resolve

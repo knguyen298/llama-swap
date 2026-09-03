@@ -61,7 +61,7 @@ describe("buildRequest for v1/chat/completions", () => {
     buildRequest("v1/chat/completions", "m", messages, options).body as any;
 
   it("targets the right url", () => {
-    expect(buildRequest("v1/chat/completions", "m", [], {}).url).toBe("/v1/chat/completions");
+    expect(buildRequest("v1/chat/completions", "m", [], {}).url).toBe("/api/v1/chat/completions");
   });
 
   it("preserves tool_calls on an assistant turn", () => {

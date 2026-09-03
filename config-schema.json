@@ -672,6 +672,23 @@
             "default": [],
             "description": "Require an API key when making requests to inference endpoints. When empty, authorization will not be checked. Each key is a non-empty string."
         },
+        "auth": {
+            "type": "object",
+            "properties": {
+                "ui": {
+                    "type": "string",
+                    "enum": [
+                        "apiKeys",
+                        "none"
+                    ],
+                    "default": "apiKeys",
+                    "description": "How the web UI, /api/* and /logs are authenticated. apiKeys: require an API key. none: no authentication, a reverse proxy must gate them. The inference endpoints (/v1/*, /models, /upstream/*, /comfyui/*) and /metrics, /unload, /running always require apiKeys."
+                }
+            },
+            "additionalProperties": false,
+            "default": {},
+            "description": "Web UI authentication mode. Inference endpoints always use apiKeys."
+        },
         "tailcat": {
             "type": "object",
             "properties": {
@@ -686,7 +703,10 @@
                 },
                 "models": {
                     "type": "array",
-                    "items": { "type": "string", "minLength": 1 },
+                    "items": {
+                        "type": "string",
+                        "minLength": 1
+                    },
                     "default": [],
                     "description": "Exact public model request IDs exposed through Tailcat. The -listen-tailcat flag requires at least one entry; '*' exposes every callable model."
                 },
