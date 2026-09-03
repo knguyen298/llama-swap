@@ -199,6 +199,10 @@ func New(cfg config.Config, muxlog *logmon.Monitor, proxylog *logmon.Monitor, up
 		return nil, fmt.Errorf("store is required")
 	}
 
+	if cfg.Auth.Enabled() && len(cfg.Auth.TrustedProxies) == 0 {
+		proxylog.Warnf("auth.trustedHeader %q is accepted from any source because auth.trustedProxies is empty; make sure only the proxy can reach llama-swap", cfg.Auth.TrustedHeader)
+	}
+
 	shutdownCtx, shutdownFn := context.WithCancel(context.Background())
 	s := &Server{
 		cfg:           cfg,
@@ -293,6 +297,9 @@ func (s *Server) routes() {
 	)
 	// Custom endpoints only need auth.
 	apiChain := chain.New(authMW)
+	// The web UI and the endpoints only it uses. Same as apiChain unless
+	// auth.trustedHeader is set, in which case only the proxy's word counts.
+	uiChain := chain.New(CreateUIAuthMiddleware(s.cfg))
 
 	mux := http.NewServeMux()
 	dispatch := http.HandlerFunc(s.localPeerHandler)
@@ -310,16 +317,16 @@ func (s *Server) routes() {
 	// llama-swap API + custom endpoints.
 	mux.Handle("GET /v1/models", apiChain.ThenFunc(s.handleListModels))
 	mux.Handle("GET /models", apiChain.ThenFunc(s.handleListModels))
-	mux.Handle("GET /logs", apiChain.ThenFunc(s.handleLogs))
-	mux.Handle("GET /logs/stream", apiChain.ThenFunc(s.handleLogStream))
-	mux.Handle("GET /logs/stream/{logMonitorID...}", apiChain.ThenFunc(s.handleLogStream))
+	mux.Handle("GET /logs", uiChain.ThenFunc(s.handleLogs))
+	mux.Handle("GET /logs/stream", uiChain.ThenFunc(s.handleLogStream))
+	mux.Handle("GET /logs/stream/{logMonitorID...}", uiChain.ThenFunc(s.handleLogStream))
 
 	mux.HandleFunc("GET /health", handleHealth)
 	mux.HandleFunc("GET /wol-health", handleHealth)
 	mux.HandleFunc("GET /{$}", handleRootRedirect)
 
 	// Embedded UI.
-	mux.Handle("GET /ui/", chain.New(authMW).ThenFunc(s.handleUI))
+	mux.Handle("GET /ui/", uiChain.ThenFunc(s.handleUI))
 	mux.HandleFunc("GET /favicon.ico", s.handleFavicon)
 
 	// Prometheus metrics (wrapped by apiChain, matches the legacy endpoint).
@@ -345,25 +352,25 @@ func (s *Server) routes() {
 	mux.Handle("/comfyui", apiChain.ThenFunc(handleComfyUIRedirect))
 	mux.Handle("/comfyui/{comfyPath...}", apiChain.ThenFunc(s.handleComfyUI))
 
-	// API group (API-key protected) consumed by the UI.
-	mux.Handle("POST /api/models/unload", apiChain.ThenFunc(s.handleAPIUnloadAll))
-	mux.Handle("POST /api/models/unload/{model...}", apiChain.ThenFunc(s.handleAPIUnloadModel))
-	mux.Handle("GET /api/profiles", apiChain.ThenFunc(s.handleAPIProfiles))
-	mux.Handle("PUT /api/profiles/active", apiChain.ThenFunc(s.handleAPIActiveProfile))
-	mux.Handle("POST /api/inflight/{id}/cancel", apiChain.ThenFunc(s.handleAPICancelInflight))
-	mux.Handle("GET /api/events", apiChain.ThenFunc(s.handleAPIEvents))
-	mux.Handle("GET /api/metrics/activity", apiChain.ThenFunc(s.handleAPIActivity))
-	mux.Handle("GET /api/metrics/stats", apiChain.ThenFunc(s.handleAPIActivityStats))
-	mux.Handle("GET /api/performance", apiChain.ThenFunc(s.handleAPIPerformance))
-	mux.Handle("GET /api/version", apiChain.ThenFunc(s.handleAPIVersion))
-	mux.Handle("GET /api/hardware", apiChain.ThenFunc(s.handleAPIHardware))
-	mux.Handle("GET /api/captures/{id}", apiChain.ThenFunc(s.handleAPICapture))
+	// API group consumed by the UI.
+	mux.Handle("POST /api/models/unload", uiChain.ThenFunc(s.handleAPIUnloadAll))
+	mux.Handle("POST /api/models/unload/{model...}", uiChain.ThenFunc(s.handleAPIUnloadModel))
+	mux.Handle("GET /api/profiles", uiChain.ThenFunc(s.handleAPIProfiles))
+	mux.Handle("PUT /api/profiles/active", uiChain.ThenFunc(s.handleAPIActiveProfile))
+	mux.Handle("POST /api/inflight/{id}/cancel", uiChain.ThenFunc(s.handleAPICancelInflight))
+	mux.Handle("GET /api/events", uiChain.ThenFunc(s.handleAPIEvents))
+	mux.Handle("GET /api/metrics/activity", uiChain.ThenFunc(s.handleAPIActivity))
+	mux.Handle("GET /api/metrics/stats", uiChain.ThenFunc(s.handleAPIActivityStats))
+	mux.Handle("GET /api/performance", uiChain.ThenFunc(s.handleAPIPerformance))
+	mux.Handle("GET /api/version", uiChain.ThenFunc(s.handleAPIVersion))
+	mux.Handle("GET /api/hardware", uiChain.ThenFunc(s.handleAPIHardware))
+	mux.Handle("GET /api/captures/{id}", uiChain.ThenFunc(s.handleAPICapture))
 
 	// Stateless MCP server exposing llama-swap's own documentation as tools,
 	// consumed by the Playground's agentic chat and by any external MCP client.
 	// Registered without a method so non-POST reaches the handler and gets a
 	// 405 with Allow, rather than the mux's bare 404.
-	mux.Handle("/api/mcp", apiChain.ThenFunc(s.handleAPIMCP))
+	mux.Handle("/api/mcp", uiChain.ThenFunc(s.handleAPIMCP))
 
 	s.mux = mux
 	s.handler = chain.New(CreateRequestLogMiddleware(s.proxylog), CreateCORSMiddleware()).Then(mux)
