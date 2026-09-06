@@ -6,9 +6,17 @@ export interface GroupedModels {
   peers: Model[];
 }
 
+/**
+ * The UI reaches the model endpoints through their /api mirror
+ * (/api/v1/..., /api/upstream/..., /api/comfyui/, /api/sdapi/...). The mirror
+ * is guarded by the web UI's auth mode, while the public paths always require
+ * an API key the browser does not have.
+ */
+export const MODEL_API_PREFIX = "/api";
+
 export function modelServerPath(modelId: string): string {
-  if (modelId === "comfyui_auto") return "/comfyui/";
-  return `/upstream/${encodeURIComponent(modelId)}/`;
+  if (modelId === "comfyui_auto") return `${MODEL_API_PREFIX}/comfyui/`;
+  return `${MODEL_API_PREFIX}/upstream/${encodeURIComponent(modelId)}/`;
 }
 
 export function matchesCapabilities(model: Model, required: string[], matchAny = false): boolean {

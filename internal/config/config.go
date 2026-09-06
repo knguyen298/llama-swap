@@ -200,6 +200,9 @@ type Config struct {
 	// support API keys, see issue #433, #50, #251
 	RequiredAPIKeys []string `yaml:"apiKeys"`
 
+	// auth selects how the web UI is authenticated; inference always uses apiKeys
+	Auth AuthConfig `yaml:"auth"`
+
 	// support remote peers, see issue #433, #296
 	Peers PeerDictionaryConfig `yaml:"peers"`
 

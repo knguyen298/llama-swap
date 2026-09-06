@@ -14,7 +14,7 @@ export async function generateImage(
     size,
   };
 
-  const response = await fetch("/v1/images/generations", {
+  const response = await fetch("/api/v1/images/generations", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
