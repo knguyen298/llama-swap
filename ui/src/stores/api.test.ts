@@ -37,7 +37,7 @@ describe("tailcat api", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => status }));
 
     await expect(fetchTailcatStatus()).resolves.toEqual(status);
-    expect(fetch).toHaveBeenCalledWith("/api/tailcat");
+    expect(fetch).toHaveBeenCalledWith("/ui/api/tailcat");
     expect(get(tailcatStatus)).toEqual(status);
   });
 
@@ -47,7 +47,7 @@ describe("tailcat api", () => {
 
     await getActivity({ srcPrefix: "tc:", page: 2, limit: 10, sort: "src", order: "asc" });
     expect(fetch).toHaveBeenCalledWith(
-      "/api/metrics/activity?page=2&limit=10&sort=src&order=asc&src_prefix=tc%3A"
+      "/ui/api/metrics/activity?page=2&limit=10&sort=src&order=asc&src_prefix=tc%3A"
     );
   });
 });
@@ -67,7 +67,7 @@ describe("hardware api", () => {
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => snapshot }));
     await expect(getHardware()).resolves.toEqual(snapshot);
-    expect(fetch).toHaveBeenCalledWith("/api/hardware");
+    expect(fetch).toHaveBeenCalledWith("/ui/api/hardware");
   });
 
   it("rejects unavailable hardware", async () => {
@@ -206,7 +206,7 @@ describe("api store event handling", () => {
 
     await setActiveProfile("coding");
     expect(get(activeProfile)).toBe("coding");
-    expect(mockFetch).toHaveBeenLastCalledWith("/api/profiles/active", expect.objectContaining({
+    expect(mockFetch).toHaveBeenLastCalledWith("/ui/api/profiles/active", expect.objectContaining({
       method: "PUT",
       body: JSON.stringify({ name: "coding" }),
     }));
@@ -253,7 +253,7 @@ describe("api store event handling", () => {
 
     await fetchPlaygroundModels();
 
-    expect(mockFetch).toHaveBeenCalledWith("/v1/models");
+    expect(mockFetch).toHaveBeenCalledWith("/ui/v1/models");
     expect(get(playgroundModels).map((model) => model.id)).not.toContain("variant");
     expect(get(playgroundModels).find((model) => model.id === "real")).toMatchObject({
       aliases: ["variant", "alternate"],

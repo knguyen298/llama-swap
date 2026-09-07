@@ -1,3 +1,4 @@
+import { UI_BASE } from "./basePath";
 import type { Model } from "./types";
 
 export interface GroupedModels {
@@ -7,8 +8,8 @@ export interface GroupedModels {
 }
 
 export function modelServerPath(modelId: string): string {
-  if (modelId === "comfyui_auto") return "/comfyui/";
-  return `/upstream/${encodeURIComponent(modelId)}/`;
+  if (modelId === "comfyui_auto") return `${UI_BASE}/comfyui/`;
+  return `${UI_BASE}/upstream/${encodeURIComponent(modelId)}/`;
 }
 
 export function matchesCapabilities(model: Model, required: string[], matchAny = false): boolean {

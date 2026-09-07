@@ -1,3 +1,4 @@
+import { UI_BASE } from "./basePath";
 import type { ImageGenerationRequest, ImageGenerationResponse } from "./types";
 import { playgroundSessionHeaders } from "./playgroundSession";
 
@@ -14,7 +15,7 @@ export async function generateImage(
     size,
   };
 
-  const response = await fetch("/v1/images/generations", {
+  const response = await fetch(`${UI_BASE}/v1/images/generations`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

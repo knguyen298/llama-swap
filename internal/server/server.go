@@ -219,6 +219,10 @@ func New(cfg config.Config, muxlog *logmon.Monitor, proxylog *logmon.Monitor, up
 		return nil, fmt.Errorf("store is required")
 	}
 
+	if cfg.Auth.UIMode() == config.UIAuthNone {
+		proxylog.Warnf("auth.ui is none: everything under /ui/ has no authentication; make sure a reverse proxy gates it")
+	}
+
 	shutdownCtx, shutdownFn := context.WithCancel(context.Background())
 	s := &Server{
 		cfg:           cfg,
@@ -297,10 +301,17 @@ func stripAudioAPIPrefix(r *http.Request) {
 // routes builds the mux, registers every route, and wraps the mux with the
 // global CORS middleware.
 func (s *Server) routes() {
+	// One set of handlers, two doors. inner holds every handler and has no
+	// authentication of its own. The public door checks for an API key. The
+	// UI door, at /ui/, checks what auth.ui says, removes the prefix, and
+	// serves the same handlers. If no handler matches, it serves the web UI's
+	// static files.
+	apiChain := chain.New(CreateAuthMiddleware(s.cfg))
+	uiChain := chain.New(CreateUIAuthMiddleware(s.cfg))
 
-	authMW := CreateAuthMiddleware(s.cfg)
+	inner := http.NewServeMux()
+	dispatch := http.HandlerFunc(s.localPeerHandler)
 	modelChain := chain.New(
-		authMW,
 		CreateProfileMiddleware(s),
 		CreateSelectorMiddleware(s),
 		CreateRequestContextMiddleware(s.cfg),
@@ -309,80 +320,77 @@ func (s *Server) routes() {
 		CreateFormFilterMiddleware(s.cfg),
 		CreateMetricsMiddleware(s.metrics, s.cfg),
 	)
-	// Custom endpoints only need auth.
-	apiChain := chain.New(authMW)
-
-	mux := http.NewServeMux()
-	dispatch := http.HandlerFunc(s.localPeerHandler)
-
 	for _, path := range modelPostJSONRoutes {
-		mux.Handle("POST "+path, modelChain.Then(dispatch))
+		inner.Handle("POST "+path, modelChain.Then(dispatch))
 	}
 	for _, path := range modelPostFormRoutes {
-		mux.Handle("POST "+path, modelChain.Then(dispatch))
+		inner.Handle("POST "+path, modelChain.Then(dispatch))
 	}
 	for _, path := range modelGetRoutes {
-		mux.Handle("GET "+path, modelChain.Then(dispatch))
+		inner.Handle("GET "+path, modelChain.Then(dispatch))
 	}
 
 	// llama-swap API + custom endpoints.
-	mux.Handle("GET /v1/models", apiChain.ThenFunc(s.handleListModels))
-	mux.Handle("GET /models", apiChain.ThenFunc(s.handleListModels))
-	mux.Handle("GET /logs", apiChain.ThenFunc(s.handleLogs))
-	mux.Handle("GET /logs/stream", apiChain.ThenFunc(s.handleLogStream))
-	mux.Handle("GET /logs/stream/{logMonitorID...}", apiChain.ThenFunc(s.handleLogStream))
+	inner.HandleFunc("GET /v1/models", s.handleListModels)
+	inner.HandleFunc("GET /models", s.handleListModels)
+	inner.HandleFunc("GET /logs", s.handleLogs)
+	inner.HandleFunc("GET /logs/stream", s.handleLogStream)
+	inner.HandleFunc("GET /logs/stream/{logMonitorID...}", s.handleLogStream)
 
-	mux.HandleFunc("GET /health", handleHealth)
-	mux.HandleFunc("GET /wol-health", handleHealth)
-	mux.HandleFunc("GET /{$}", handleRootRedirect)
-
-	// Embedded UI.
-	mux.Handle("GET /ui/", chain.New(authMW).ThenFunc(s.handleUI))
-	mux.HandleFunc("GET /favicon.ico", s.handleFavicon)
-
-	// Prometheus metrics (wrapped by apiChain, matches the legacy endpoint).
-	mux.Handle("GET /metrics", apiChain.ThenFunc(s.handleMetrics))
+	// Prometheus metrics (matches the legacy endpoint).
+	inner.HandleFunc("GET /metrics", s.handleMetrics)
 
 	// Operations endpoints.
-	mux.Handle("GET /unload", apiChain.ThenFunc(s.handleUnload))
-	mux.Handle("GET /running", apiChain.ThenFunc(s.handleRunning))
+	inner.HandleFunc("GET /unload", s.handleUnload)
+	inner.HandleFunc("GET /running", s.handleRunning)
 
 	// Upstream passthrough. Meter only the model-dispatched endpoints that can
 	// produce token usage/timings.
-	upstreamChain := apiChain.Append(
+	upstreamChain := chain.New(
 		CreateProfileMiddleware(s),
 		CreateUpstreamInflightMiddleware(s.inflight, s.cfg),
 		CreateMetricsMiddleware(s.metrics, s.cfg),
 	)
-	mux.HandleFunc("GET /upstream", handleUpstreamRedirect)
-	mux.Handle("/upstream/{upstreamPath...}", upstreamChain.ThenFunc(s.handleUpstream))
+	inner.HandleFunc("GET /upstream", handleUpstreamRedirect)
+	inner.Handle("/upstream/{upstreamPath...}", upstreamChain.ThenFunc(s.handleUpstream))
 
 	// ComfyUI compatibility passthrough. This uses the fixed comfyui_auto model,
 	// whose compatibility settings are applied while loading config. Only the
 	// root path may start an unloaded model.
-	mux.Handle("/comfyui", apiChain.ThenFunc(handleComfyUIRedirect))
-	mux.Handle("/comfyui/{comfyPath...}", apiChain.ThenFunc(s.handleComfyUI))
+	inner.HandleFunc("/comfyui", handleComfyUIRedirect)
+	inner.HandleFunc("/comfyui/{comfyPath...}", s.handleComfyUI)
 
-	// API group (API-key protected) consumed by the UI.
-	mux.Handle("POST /api/models/unload", apiChain.ThenFunc(s.handleAPIUnloadAll))
-	mux.Handle("POST /api/models/unload/{model...}", apiChain.ThenFunc(s.handleAPIUnloadModel))
-	mux.Handle("GET /api/profiles", apiChain.ThenFunc(s.handleAPIProfiles))
-	mux.Handle("PUT /api/profiles/active", apiChain.ThenFunc(s.handleAPIActiveProfile))
-	mux.Handle("POST /api/inflight/{id}/cancel", apiChain.ThenFunc(s.handleAPICancelInflight))
-	mux.Handle("GET /api/events", apiChain.ThenFunc(s.handleAPIEvents))
-	mux.Handle("GET /api/metrics/activity", apiChain.ThenFunc(s.handleAPIActivity))
-	mux.Handle("GET /api/metrics/stats", apiChain.ThenFunc(s.handleAPIActivityStats))
-	mux.Handle("GET /api/performance", apiChain.ThenFunc(s.handleAPIPerformance))
-	mux.Handle("GET /api/version", apiChain.ThenFunc(s.handleAPIVersion))
-	mux.Handle("GET /api/hardware", apiChain.ThenFunc(s.handleAPIHardware))
-	mux.Handle("GET /api/tailcat", apiChain.ThenFunc(s.handleAPITailcat))
-	mux.Handle("GET /api/captures/{id}", apiChain.ThenFunc(s.handleAPICapture))
+	// API group consumed by the UI.
+	inner.HandleFunc("POST /api/models/unload", s.handleAPIUnloadAll)
+	inner.HandleFunc("POST /api/models/unload/{model...}", s.handleAPIUnloadModel)
+	inner.HandleFunc("GET /api/profiles", s.handleAPIProfiles)
+	inner.HandleFunc("PUT /api/profiles/active", s.handleAPIActiveProfile)
+	inner.HandleFunc("POST /api/inflight/{id}/cancel", s.handleAPICancelInflight)
+	inner.HandleFunc("GET /api/events", s.handleAPIEvents)
+	inner.HandleFunc("GET /api/metrics/activity", s.handleAPIActivity)
+	inner.HandleFunc("GET /api/metrics/stats", s.handleAPIActivityStats)
+	inner.HandleFunc("GET /api/performance", s.handleAPIPerformance)
+	inner.HandleFunc("GET /api/version", s.handleAPIVersion)
+	inner.HandleFunc("GET /api/hardware", s.handleAPIHardware)
+	inner.HandleFunc("GET /api/tailcat", s.handleAPITailcat)
+	inner.HandleFunc("GET /api/captures/{id}", s.handleAPICapture)
 
 	// Stateless MCP server exposing llama-swap's own documentation as tools,
 	// consumed by the Playground's agentic chat and by any external MCP client.
 	// Registered without a method so non-POST reaches the handler and gets a
 	// 405 with Allow, rather than the mux's bare 404.
-	mux.Handle("/api/mcp", apiChain.ThenFunc(s.handleAPIMCP))
+	inner.HandleFunc("/api/mcp", s.handleAPIMCP)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", handleHealth)
+	mux.HandleFunc("GET /wol-health", handleHealth)
+	mux.HandleFunc("GET /{$}", handleRootRedirect)
+	mux.HandleFunc("GET /favicon.ico", s.handleFavicon)
+
+	// The UI door: the embedded UI and every handler on inner.
+	mux.Handle(uiPrefix+"/", uiChain.Then(uiDoor(inner, http.HandlerFunc(s.handleUI))))
+	// The public door: every handler on inner.
+	mux.Handle("/", publicDoor(inner, apiChain))
 
 	s.mux = mux
 	s.handler = chain.New(CreateRequestLogMiddleware(s.proxylog), CreateCORSMiddleware()).Then(mux)

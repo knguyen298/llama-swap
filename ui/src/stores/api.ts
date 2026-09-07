@@ -1,3 +1,4 @@
+import { UI_BASE } from "../lib/basePath";
 import { writable, derived } from "svelte/store";
 import type {
   Model,
@@ -91,7 +92,7 @@ export function enableAPIEvents(enabled: boolean): void {
 
   const connect = () => {
     apiEventSource?.close();
-    apiEventSource = new EventSource("/api/events");
+    apiEventSource = new EventSource(`${UI_BASE}/api/events`);
 
     connectionState.set("connecting");
 
@@ -218,7 +219,7 @@ export function handleAPIEventMessage(data: string): void {
 
 export async function fetchProfiles(): Promise<ProfileState> {
   const revision = profileRevision;
-  const response = await fetch("/api/profiles");
+  const response = await fetch(`${UI_BASE}/api/profiles`);
   if (!response.ok) {
     throw new Error(`Failed to list profiles: ${response.status}`);
   }
@@ -230,7 +231,7 @@ export async function fetchProfiles(): Promise<ProfileState> {
 
 export async function setActiveProfile(name: string | null): Promise<void> {
   const revision = profileRevision;
-  const response = await fetch("/api/profiles/active", {
+  const response = await fetch(`${UI_BASE}/api/profiles/active`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
@@ -246,7 +247,7 @@ export async function setActiveProfile(name: string | null): Promise<void> {
 connectionState.subscribe(async (status) => {
   if (status === "connected") {
     try {
-      const response = await fetch("/api/version");
+      const response = await fetch(`${UI_BASE}/api/version`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -278,7 +279,7 @@ interface ModelListRecord {
 
 async function loadPlaygroundModels(request: number): Promise<Model[]> {
   try {
-    const response = await fetch("/v1/models");
+    const response = await fetch(`${UI_BASE}/v1/models`);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -369,7 +370,7 @@ export async function getActivity(params: {
   // model pinned above. The API also accepts repeated "model" params and
   // start/end timestamps, which no UI control currently produces.
   if (params.filters) appendActivityFilters(query, params.filters);
-  const url = query.size > 0 ? `/api/metrics/activity?${query}` : "/api/metrics/activity";
+  const url = query.size > 0 ? `${UI_BASE}/api/metrics/activity?${query}` : `${UI_BASE}/api/metrics/activity`;
 
   const response = await fetch(url);
   if (!response.ok) {
@@ -379,7 +380,7 @@ export async function getActivity(params: {
 }
 
 export async function fetchTailcatStatus(): Promise<TailcatStatus> {
-  const response = await fetch("/api/tailcat");
+  const response = await fetch(`${UI_BASE}/api/tailcat`);
   if (!response.ok) {
     throw new Error(`Failed to fetch Tailcat status: ${response.status}`);
   }
@@ -391,7 +392,7 @@ export async function fetchTailcatStatus(): Promise<TailcatStatus> {
 export async function getActivityStats(model?: string): Promise<ActivityStatsData> {
   const query = new URLSearchParams();
   if (model) query.set("model", model);
-  const url = query.size > 0 ? `/api/metrics/stats?${query}` : "/api/metrics/stats";
+  const url = query.size > 0 ? `${UI_BASE}/api/metrics/stats?${query}` : `${UI_BASE}/api/metrics/stats`;
 
   const response = await fetch(url);
   if (!response.ok) {
@@ -402,7 +403,7 @@ export async function getActivityStats(model?: string): Promise<ActivityStatsDat
 
 export async function unloadAllModels(): Promise<void> {
   try {
-    const response = await fetch(`/api/models/unload`, {
+    const response = await fetch(`${UI_BASE}/api/models/unload`, {
       method: "POST",
     });
     if (!response.ok) {
@@ -416,7 +417,7 @@ export async function unloadAllModels(): Promise<void> {
 
 export async function unloadSingleModel(model: string): Promise<void> {
   try {
-    const response = await fetch(`/api/models/unload/${model}`, {
+    const response = await fetch(`${UI_BASE}/api/models/unload/${model}`, {
       method: "POST",
     });
     if (!response.ok) {
@@ -430,7 +431,7 @@ export async function unloadSingleModel(model: string): Promise<void> {
 
 export async function cancelInflightRequest(id: string): Promise<void> {
   try {
-    const response = await fetch(`/api/inflight/${encodeURIComponent(id)}/cancel`, {
+    const response = await fetch(`${UI_BASE}/api/inflight/${encodeURIComponent(id)}/cancel`, {
       method: "POST",
     });
     if (!response.ok) {
@@ -444,7 +445,7 @@ export async function cancelInflightRequest(id: string): Promise<void> {
 
 export async function loadModel(model: string, signal?: AbortSignal): Promise<void> {
   try {
-    const response = await fetch(`/upstream/${model}/?_=${Date.now()}`, {
+    const response = await fetch(`${UI_BASE}/upstream/${model}/?_=${Date.now()}`, {
       method: "GET",
       signal,
     });
@@ -462,7 +463,7 @@ export async function loadModel(model: string, signal?: AbortSignal): Promise<vo
 
 export async function getCapture(id: number): Promise<ReqRespCapture | null> {
   try {
-    const response = await fetch(`/api/captures/${id}`);
+    const response = await fetch(`${UI_BASE}/api/captures/${id}`);
     if (response.status === 404) {
       return null;
     }
@@ -478,7 +479,7 @@ export async function getCapture(id: number): Promise<ReqRespCapture | null> {
 
 export async function checkPerformanceEnabled(): Promise<void> {
   try {
-    const response = await fetch("/api/performance");
+    const response = await fetch(`${UI_BASE}/api/performance`);
     if (!response.ok) {
       performanceEnabled.set(false);
       return;
@@ -492,7 +493,7 @@ export async function checkPerformanceEnabled(): Promise<void> {
 
 export async function fetchPerformance(after?: string): Promise<PerformanceResponse | null> {
   try {
-    const url = after ? `/api/performance?after=${encodeURIComponent(after)}` : "/api/performance";
+    const url = after ? `${UI_BASE}/api/performance?after=${encodeURIComponent(after)}` : `${UI_BASE}/api/performance`;
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -505,7 +506,7 @@ export async function fetchPerformance(after?: string): Promise<PerformanceRespo
 }
 
 export async function getHardware(): Promise<HardwareSnapshot> {
-  const response = await fetch("/api/hardware");
+  const response = await fetch(`${UI_BASE}/api/hardware`);
   if (!response.ok) {
     throw new Error(`Failed to fetch hardware: ${response.status}`);
   }
