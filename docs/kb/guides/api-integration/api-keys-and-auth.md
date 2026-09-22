@@ -1,10 +1,10 @@
 ---
 title: API keys, access control, and keeping secrets out of your config
-summary: apiKeys authentication has no per-key rate limits or user permissions; use env macros for secrets.
+summary: apiKeys guard the public API; auth.ui can hand web UI login to a reverse proxy; use env macros for secrets.
 category: guides
-tags: [security, api-keys, auth, secrets, env, rate-limit, users, permissions, access-control]
-config_keys: [apiKeys, macros, peers.*.apiKey, models.*.env]
-updated: 2026-08-25
+tags: [security, api-keys, auth, secrets, env, rate-limit, users, permissions, access-control, web-ui, reverse-proxy, authelia]
+config_keys: [apiKeys, auth.ui, macros, peers.*.apiKey, models.*.env]
+updated: 2026-09-06
 ---
 
 # API keys and keeping secrets out of your config
@@ -20,7 +20,8 @@ apiKeys:
 ```
 
 Clients may present it as `Authorization: Bearer <key>`, `x-api-key: <key>`, or
-HTTP Basic. The web UI and everything under `/api/` are covered too.
+HTTP Basic. The web UI and everything under `/api/` are covered too. You can
+hand web UI login to a reverse proxy with `auth.ui` (see below).
 
 Generate a real one:
 
@@ -38,6 +39,58 @@ front of llama-swap when you need those controls.
 **`apiKeys` is not a substitute for a firewall.** llama-swap starts processes
 on your machine. Do not expose it to the internet on the strength of a bearer
 token alone.
+
+## Letting a reverse proxy own web UI login
+
+With only `apiKeys` set, any client key also opens the web UI, and the browser
+shows an HTTP Basic prompt. If a proxy such as Authelia or oauth2-proxy already
+logs people in, hand the web UI to it with `auth.ui: none`:
+
+```yaml
+apiKeys:
+  - "${env.LLAMA_SWAP_KEY}"
+auth:
+  ui: none
+```
+
+### Two doors, one set of handlers
+
+llama-swap has one set of handlers and two doors in front of them. The public
+door is every path outside `/ui/`. It always requires an API key. The UI door
+is `/ui/`. It follows `auth.ui`: it requires an API key by default, or nothing
+with `ui: none`.
+
+The web UI makes every request through the UI door. The Playground calls
+`/ui/v1/chat/completions`, the Models page calls `/ui/api/profiles`, and a
+model's own web UI opens at `/ui/upstream/<model>/`. The server removes the
+`/ui` prefix and runs the same handler an API client reaches at
+`/v1/chat/completions`, `/api/profiles`, or `/upstream/<model>/`. The web UI
+never holds an API key.
+
+| Path | `auth.ui: apiKeys` (default) | `auth.ui: none` |
+|---|---|---|
+| `/ui/` and everything under it | API key | none, the proxy decides |
+| every other path (`/v1/*`, `/api/*`, `/logs`, `/upstream/*`, `/metrics`, ...) | API key | API key |
+| `/health` | none | none |
+
+A person who reaches the web UI can also call `/ui/v1/...` by hand. That is
+the intended boundary. Access to the web UI means inference through the UI
+door. An API key means inference through the public door. The two never cross.
+
+### What the proxy must do
+
+- Require login for `/ui/`. With `ui: none` this is the only path llama-swap
+  leaves open.
+- Skip login for `/v1/`, so API clients reach llama-swap with only their key.
+  Add `/models`, `/upstream/`, `/comfyui/`, `/sdapi/`, `/metrics`, `/unload`,
+  or `/running` to that list if an external client uses them.
+- Publish llama-swap only to the proxy. With `ui: none`, anything that can
+  reach the port directly gets the whole web UI, including inference.
+  llama-swap logs a warning at startup as a reminder.
+
+`auth.ui` does not change what an API key can do outside the web UI. An
+inference key can still call `/unload` and `/api/models/unload`, as it can
+today.
 
 ## Keep the keys out of the file
 
@@ -98,5 +151,5 @@ the problem survives.
 
 ## Related
 
-- `reference/config/apiKeys`, `reference/config/peers`
+- `reference/config/apiKeys`, `reference/config/auth`, `reference/config/peers`
 - `guides/configuration/macros` — how env macros resolve
