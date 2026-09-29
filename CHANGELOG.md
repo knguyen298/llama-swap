@@ -1,5 +1,16 @@
 # Changelog
 
+## v260-combined
+
+This is a fork build of upstream v260 with two feature branches merged.
+
+- feat/fallback-set: the swap matrix accepts an opt-in `+auto:orphans`
+  reference. It builds a set from the models that no set names.
+- feat/ui-auth: a new `auth.ui` setting. The default, `apiKeys`, keeps the
+  upstream behavior. With `none`, everything under `/ui/` has no
+  authentication, so a reverse proxy must gate it. Every other path still
+  requires an API key.
+
 ## v260
 
 This release fixes a crash at startup on macOS 27 with Apple M6 hardware
