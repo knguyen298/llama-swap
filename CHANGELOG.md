@@ -1,5 +1,16 @@
 # Changelog
 
+## v262-combined (Oct 8, 2026)
+
+This is a fork build of upstream v262 with two feature branches merged.
+
+- feat/fallback-set: the swap matrix accepts an opt-in `+auto:orphans`
+  reference. It builds a set from the models that no set names.
+- feat/ui-auth: a new `auth.ui` setting. The default, `apiKeys`, keeps the
+  upstream behavior. With `none`, everything under `/ui/` has no
+  authentication, so a reverse proxy must gate it. Every other path still
+  requires an API key.
+
 ## v262 (Oct 2, 2026)
 
 systemone models are mega hyped right now. This release adds support for
