@@ -1,3 +1,4 @@
+import { UI_BASE } from "./basePath";
 import { playgroundSessionHeaders } from "./playgroundSession";
 
 export interface RerankResult {
@@ -18,7 +19,7 @@ export async function rerank(
   documents: string[],
   signal: AbortSignal
 ): Promise<RerankResponse> {
-  const response = await fetch("/v1/rerank", {
+  const response = await fetch(`${UI_BASE}/v1/rerank`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...playgroundSessionHeaders },
     body: JSON.stringify({ model, query, documents }),
