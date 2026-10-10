@@ -1,5 +1,16 @@
 # Changelog
 
+## v263-combined (Oct 10, 2026)
+
+This is a fork build of upstream v263 with two feature branches merged.
+
+- feat/fallback-set: the swap matrix accepts an opt-in `+auto:orphans`
+  reference. It builds a set from the models that no set names.
+- feat/ui-auth: a new `auth.ui` setting. The default, `apiKeys`, keeps the
+  upstream behavior. With `none`, everything under `/ui/` has no
+  authentication, so a reverse proxy must gate it. Every other path still
+  requires an API key.
+
 ## v263 (Oct 9, 2026)
 
 I've been busy, busy, busy and have not had as much time for llama-swap as I
