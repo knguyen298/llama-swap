@@ -17,7 +17,7 @@ import (
 // config.
 
 func handleComfyUIRedirect(w http.ResponseWriter, r *http.Request) {
-	location := "/comfyui/"
+	location := doorPrefix(r) + "/comfyui/"
 	if r.URL.RawQuery != "" {
 		location += "?" + r.URL.RawQuery
 	}
