@@ -14,7 +14,7 @@ import (
 // are registered in server.go.
 
 func handleAudioCppRedirect(w http.ResponseWriter, r *http.Request) {
-	location := "/audiocpp/"
+	location := doorPrefix(r) + "/audiocpp/"
 	if r.URL.RawQuery != "" {
 		location += "?" + r.URL.RawQuery
 	}

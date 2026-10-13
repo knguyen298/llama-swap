@@ -456,7 +456,7 @@ func (s *Server) handleUpstream(w http.ResponseWriter, r *http.Request) {
 	// Redirect /upstream/model to /upstream/model/ so relative URLs in upstream
 	// responses resolve. 301 for GET/HEAD, 308 otherwise to preserve the method.
 	if remainingPath == "/" && !strings.HasSuffix(r.URL.Path, "/") {
-		newPath := "/upstream/" + searchName + "/"
+		newPath := doorPrefix(r) + "/upstream/" + searchName + "/"
 		if r.URL.RawQuery != "" {
 			newPath += "?" + r.URL.RawQuery
 		}

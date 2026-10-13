@@ -62,7 +62,7 @@ describe("log streams", () => {
     const close = connectLogStreams(["proxy", "http"]);
     expect(FakeEventSource.instances).toHaveLength(1);
     const source = FakeEventSource.instances[0];
-    expect(source.url).toBe("/api/events/logs?stream=proxy&stream=http");
+    expect(source.url).toBe("/ui/api/events/logs?stream=proxy&stream=http");
 
     upstreamLogs.set("untouched");
     proxyLogs.set("stale");
