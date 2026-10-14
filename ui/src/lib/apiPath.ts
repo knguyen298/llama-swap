@@ -26,9 +26,19 @@ export function uiPrefix(pathname: string): string {
   return "";
 }
 
-/** Prefix a rooted server path with the current mount prefix. */
+/** The door the web UI talks through. The server applies the auth.ui setting
+ * at this prefix, removes it, and runs the same handler an API client reaches
+ * on the public path. See uiDoor in internal/server/auth.go. */
+export const UI_DOOR = "/ui";
+
+/** Prefix a rooted server path with the current mount prefix and the UI door.
+ *
+ * Every request the web UI makes goes through the door, so the browser never
+ * needs an API key when auth.ui is none. Outside the browser the path is
+ * returned unchanged: cli/fetchBase.ts resolves rooted paths against
+ * --base-url and authenticates through the public door with an API key. */
 export function apiUrl(path: string): string {
   if (typeof window === "undefined") return path;
   const prefix = uiPrefix(window.location.pathname);
-  return prefix ? prefix + path : path;
+  return prefix + UI_DOOR + path;
 }
