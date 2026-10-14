@@ -18,13 +18,14 @@ import (
 )
 
 func TestServer_ParseMetrics_ChatCompletions(t *testing.T) {
+	// prompt_tokens includes the cached prefix; the stored input count does not.
 	body := `{"usage":{"prompt_tokens":12,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":4}}}`
 	parsed := gjson.Parse(body)
 	entry, err := parseMetrics("m", time.Now(), parsed.Get("usage"), parsed.Get("timings"), parsed.Get("metrics"))
 	if err != nil {
 		t.Fatalf("parseMetrics: %v", err)
 	}
-	if entry.Tokens.InputTokens != 12 || entry.Tokens.OutputTokens != 7 || entry.Tokens.CachedTokens != 4 {
+	if entry.Tokens.InputTokens != 8 || entry.Tokens.OutputTokens != 7 || entry.Tokens.CachedTokens != 4 {
 		t.Fatalf("tokens = %+v", entry.Tokens)
 	}
 }
@@ -126,30 +127,36 @@ func TestServer_ParseMetrics_TabbyAPI(t *testing.T) {
 }
 
 func TestServer_ParseMetrics_OMLX(t *testing.T) {
+	// The usage block reports prompt_tokens 56 with 16 cached, so the normalized
+	// input count is 40. Cases with llama-server timings keep prompt_n 56, which
+	// already excludes cache_n.
 	tests := []struct {
 		name         string
 		rates        string
 		extra        string
+		wantInput    int
 		wantPrompt   float64
 		wantGenerate float64
 	}{
-		{"reported", `,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, "", 63.74, 66.38},
-		{"zero", `,"prompt_tokens_per_second":0,"generation_tokens_per_second":0`, "", 0, 0},
-		{"null", `,"prompt_tokens_per_second":null,"generation_tokens_per_second":null`, "", -1, -1},
-		{"missing", "", "", -1, -1},
-		{"prompt only", `,"prompt_tokens_per_second":63.74`, "", 63.74, -1},
-		{"generation only", `,"generation_tokens_per_second":66.38`, "", -1, 66.38},
-		{"non-numeric", `,"prompt_tokens_per_second":"unknown","generation_tokens_per_second":false`, "", -1, -1},
-		{"TabbyAPI precedence", `,"prompt_tokens_per_sec":35.17,"completion_tokens_per_sec":17.11,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, "", 35.17, 17.11},
-		{"TabbyAPI zero precedence", `,"prompt_tokens_per_sec":0,"completion_tokens_per_sec":0,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, "", 0, 0},
-		{"TabbyAPI string precedence", `,"prompt_tokens_per_sec":"35.17","completion_tokens_per_sec":"17.11","prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, "", 35.17, 17.11},
-		{"TabbyAPI null fallback", `,"prompt_tokens_per_sec":null,"completion_tokens_per_sec":null,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, "", 63.74, 66.38},
-		{"all null", `,"prompt_tokens_per_sec":null,"completion_tokens_per_sec":null,"prompt_tokens_per_second":null,"generation_tokens_per_second":null`, "", -1, -1},
-		{"independent generation fallback", `,"prompt_tokens_per_sec":35.17,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, "", 35.17, 66.38},
-		{"independent prompt fallback", `,"completion_tokens_per_sec":17.11,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, "", 63.74, 17.11},
-		{"timings precedence", `,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, `,"timings":{"prompt_n":56,"predicted_n":8,"cache_n":16,"prompt_per_second":100,"predicted_per_second":40}`, 100, 40},
-		{"vLLM precedence", `,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, `,"metrics":{"time_to_first_token_ms":200,"mean_itl_ms":10}`, 200, 100},
-		{"vLLM over timings", `,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, `,"timings":{"prompt_n":56,"predicted_n":8,"cache_n":16,"prompt_per_second":100,"predicted_per_second":40},"metrics":{"time_to_first_token_ms":200,"mean_itl_ms":10}`, 200, 100},
+		{"reported", `,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, "", 40, 63.74, 66.38},
+		{"zero", `,"prompt_tokens_per_second":0,"generation_tokens_per_second":0`, "", 40, 0, 0},
+		{"null", `,"prompt_tokens_per_second":null,"generation_tokens_per_second":null`, "", 40, -1, -1},
+		{"missing", "", "", 40, -1, -1},
+		{"prompt only", `,"prompt_tokens_per_second":63.74`, "", 40, 63.74, -1},
+		{"generation only", `,"generation_tokens_per_second":66.38`, "", 40, -1, 66.38},
+		{"non-numeric", `,"prompt_tokens_per_second":"unknown","generation_tokens_per_second":false`, "", 40, -1, -1},
+		{"TabbyAPI precedence", `,"prompt_tokens_per_sec":35.17,"completion_tokens_per_sec":17.11,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, "", 40, 35.17, 17.11},
+		{"TabbyAPI zero precedence", `,"prompt_tokens_per_sec":0,"completion_tokens_per_sec":0,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, "", 40, 0, 0},
+		{"TabbyAPI string precedence", `,"prompt_tokens_per_sec":"35.17","completion_tokens_per_sec":"17.11","prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, "", 40, 35.17, 17.11},
+		{"TabbyAPI null fallback", `,"prompt_tokens_per_sec":null,"completion_tokens_per_sec":null,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, "", 40, 63.74, 66.38},
+		{"all null", `,"prompt_tokens_per_sec":null,"completion_tokens_per_sec":null,"prompt_tokens_per_second":null,"generation_tokens_per_second":null`, "", 40, -1, -1},
+		{"independent generation fallback", `,"prompt_tokens_per_sec":35.17,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, "", 40, 35.17, 66.38},
+		{"independent prompt fallback", `,"completion_tokens_per_sec":17.11,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, "", 40, 63.74, 17.11},
+		{"timings precedence", `,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, `,"timings":{"prompt_n":56,"predicted_n":8,"cache_n":16,"prompt_per_second":100,"predicted_per_second":40}`, 56, 100, 40},
+		{"vLLM precedence", `,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, `,"metrics":{"time_to_first_token_ms":200,"mean_itl_ms":10}`, 40, 200, 100},
+		// metrics win over timings for the rates, and the prompt rate divides the
+		// timings prompt_n (56 new tokens) by time_to_first_token_ms.
+		{"vLLM over timings", `,"prompt_tokens_per_second":63.74,"generation_tokens_per_second":66.38`, `,"timings":{"prompt_n":56,"predicted_n":8,"cache_n":16,"prompt_per_second":100,"predicted_per_second":40},"metrics":{"time_to_first_token_ms":200,"mean_itl_ms":10}`, 56, 280, 100},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -172,8 +179,8 @@ func TestServer_ParseMetrics_OMLX(t *testing.T) {
 					if err != nil {
 						t.Fatalf("parse metrics: %v", err)
 					}
-					if entry.Tokens.InputTokens != 56 || entry.Tokens.OutputTokens != 8 || entry.Tokens.CachedTokens != 16 {
-						t.Fatalf("tokens = %+v", entry.Tokens)
+					if entry.Tokens.InputTokens != test.wantInput || entry.Tokens.OutputTokens != 8 || entry.Tokens.CachedTokens != 16 {
+						t.Fatalf("tokens = %+v, want input %d cached 16", entry.Tokens, test.wantInput)
 					}
 					if entry.Tokens.PromptPerSecond != test.wantPrompt || entry.Tokens.TokensPerSecond != test.wantGenerate {
 						t.Fatalf("rates = %+v, want prompt %v, generation %v", entry.Tokens, test.wantPrompt, test.wantGenerate)
@@ -297,7 +304,7 @@ func TestServer_ParseMetrics_VLLMMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseMetrics: %v", err)
 	}
-	if entry.Tokens.InputTokens != 42 || entry.Tokens.OutputTokens != 128 || entry.Tokens.CachedTokens != 20 {
+	if entry.Tokens.InputTokens != 22 || entry.Tokens.OutputTokens != 128 || entry.Tokens.CachedTokens != 20 {
 		t.Fatalf("tokens = %+v", entry.Tokens)
 	}
 	if got, want := entry.Tokens.PromptPerSecond, float64(42-20)/(85.2/1000); math.Abs(got-want) > 1e-9 {
@@ -305,6 +312,120 @@ func TestServer_ParseMetrics_VLLMMetrics(t *testing.T) {
 	}
 	if got, want := entry.Tokens.TokensPerSecond, 1000/9.1; math.Abs(got-want) > 1e-9 {
 		t.Errorf("TokensPerSecond = %v, want %v", got, want)
+	}
+}
+
+// The Prompt count means the same thing for every backend: the tokens the
+// backend had to process. A cached prefix is reported separately and is never
+// part of it (#1218).
+func TestServer_ParseMetrics_PromptExcludesCached(t *testing.T) {
+	tests := []struct {
+		name       string
+		usage      string
+		wantInput  int
+		wantCached int
+	}{
+		{
+			name:       "vLLM prompt_tokens includes the cached prefix",
+			usage:      `{"prompt_tokens":10617,"total_tokens":10792,"completion_tokens":175,"prompt_tokens_details":{"cached_tokens":9936}}`,
+			wantInput:  681,
+			wantCached: 9936,
+		},
+		{
+			name:       "vLLM cache miss keeps the whole prompt",
+			usage:      `{"prompt_tokens":9838,"completion_tokens":51,"prompt_tokens_details":{"cached_tokens":0,"created_cache_tokens":0}}`,
+			wantInput:  9838,
+			wantCached: 0,
+		},
+		{
+			name:       "vLLM without prompt tokens details has no cached count",
+			usage:      `{"prompt_tokens":9838,"completion_tokens":51}`,
+			wantInput:  9838,
+			wantCached: -1,
+		},
+		{
+			name:       "Responses API input_tokens includes the cached prefix",
+			usage:      `{"input_tokens":1000,"output_tokens":20,"input_tokens_details":{"cached_tokens":800}}`,
+			wantInput:  200,
+			wantCached: 800,
+		},
+		{
+			name:       "Anthropic input_tokens already excludes cache_read_input_tokens",
+			usage:      `{"input_tokens":200,"output_tokens":20,"cache_read_input_tokens":9000}`,
+			wantInput:  200,
+			wantCached: 9000,
+		},
+		{
+			name:       "cached count larger than prompt count clamps to zero",
+			usage:      `{"prompt_tokens":10,"completion_tokens":1,"prompt_tokens_details":{"cached_tokens":12}}`,
+			wantInput:  0,
+			wantCached: 12,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			parsed := gjson.Parse(`{"usage":` + test.usage + `}`)
+			entry, err := parseMetrics("m", time.Now(), parsed.Get("usage"), parsed.Get("timings"), parsed.Get("metrics"))
+			if err != nil {
+				t.Fatalf("parseMetrics: %v", err)
+			}
+			if entry.Tokens.InputTokens != test.wantInput || entry.Tokens.CachedTokens != test.wantCached {
+				t.Fatalf("tokens = %+v, want input %d cached %d", entry.Tokens, test.wantInput, test.wantCached)
+			}
+		})
+	}
+}
+
+// The final vLLM chunk from #1218. prompt_tokens already contains cached_tokens
+// and buildMetrics no longer subtracts it a second time, so the prefill rate is
+// (10617-9936) / 0.3626s = 1878 t/s.
+func TestServer_ParseMetrics_VLLMPrefillSubtractsCachedOnce(t *testing.T) {
+	const chunk = `{"id":"chatcmpl-8768d1e9b1937ef8","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":10617,"total_tokens":10792,"completion_tokens":175,"prompt_tokens_details":{"cached_tokens":9936,"created_cache_tokens":0}},"metrics":{"time_to_first_token_ms":362.6498600060586,"mean_itl_ms":8.28218967242343}}`
+
+	check := func(t *testing.T, entry ActivityLogEntry) {
+		t.Helper()
+		if entry.Tokens.InputTokens != 681 || entry.Tokens.OutputTokens != 175 || entry.Tokens.CachedTokens != 9936 {
+			t.Fatalf("tokens = %+v, want input 681 output 175 cached 9936", entry.Tokens)
+		}
+		want := float64(10617-9936) / (362.6498600060586 / 1000)
+		if got := entry.Tokens.PromptPerSecond; math.Abs(got-want) > 1e-9 {
+			t.Errorf("PromptPerSecond = %v, want %v", got, want)
+		}
+	}
+
+	t.Run("JSON", func(t *testing.T) {
+		parsed := gjson.Parse(chunk)
+		entry, err := parseMetrics("m", time.Now(), parsed.Get("usage"), parsed.Get("timings"), parsed.Get("metrics"))
+		if err != nil {
+			t.Fatalf("parseMetrics: %v", err)
+		}
+		check(t, entry)
+	})
+
+	t.Run("SSE", func(t *testing.T) {
+		entry, err := processStreamingResponse("m", time.Now(), []byte("data: "+chunk+"\n\ndata: [DONE]\n\n"))
+		if err != nil {
+			t.Fatalf("processStreamingResponse: %v", err)
+		}
+		check(t, entry)
+	})
+}
+
+// An Anthropic-style usage block carries a vLLM-style metrics object when
+// llama-swap fronts one with the other. input_tokens excludes the cache hit,
+// so the prefill rate divides it as reported.
+func TestServer_ParseMetrics_AnthropicUsageWithVLLMMetrics(t *testing.T) {
+	body := `{"usage":{"input_tokens":200,"output_tokens":20,"cache_read_input_tokens":9000},"metrics":{"time_to_first_token_ms":100}}`
+	parsed := gjson.Parse(body)
+	entry, err := parseMetrics("m", time.Now(), parsed.Get("usage"), parsed.Get("timings"), parsed.Get("metrics"))
+	if err != nil {
+		t.Fatalf("parseMetrics: %v", err)
+	}
+	if entry.Tokens.InputTokens != 200 || entry.Tokens.CachedTokens != 9000 {
+		t.Fatalf("tokens = %+v, want input 200 cached 9000", entry.Tokens)
+	}
+	if got, want := entry.Tokens.PromptPerSecond, 2000.0; math.Abs(got-want) > 1e-9 {
+		t.Errorf("PromptPerSecond = %v, want %v", got, want)
 	}
 }
 

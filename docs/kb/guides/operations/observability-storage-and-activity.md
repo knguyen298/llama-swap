@@ -4,7 +4,7 @@ summary: Use logs, metrics, captures and the Activity view to diagnose requests 
 category: guides
 tags: [operations, logs, metrics, activity, captures, stdout, http]
 config_keys: [logLevel, logToStdout, metricsMaxInMemory, captureBuffer]
-updated: 2026-09-25
+updated: 2026-10-14
 ---
 
 # Observability, storage and Activity
@@ -20,6 +20,30 @@ logToStdout: "proxy,http"
 metricsMaxInMemory: 1000
 captureBuffer: 100
 ```
+
+## Prompt and Cached columns
+
+Every backend reports token counts its own way. llama-swap normalizes them on
+write, so one meaning holds for all backends:
+
+- `Cached` counts prompt tokens the backend reused from its own prefix cache.
+- `Prompt` counts only the new tokens the backend had to process. It never
+  includes `Cached`, and the two columns add up to the full prompt length.
+- `Prefill` divides `Prompt` by the time to the first token.
+
+Backends report these fields differently. llama.cpp sends `timings.prompt_n`
+(new tokens) and `timings.cache_n`. vLLM sends `usage.prompt_tokens` with the
+cached prefix included and `usage.prompt_tokens_details.cached_tokens`; with
+Anthropic-style usage, `input_tokens` already excludes `cache_read_input_tokens`.
+llama-swap subtracts the cached count from the OpenAI-style totals so that all
+three spellings agree.
+
+What goes wrong:
+
+- Rows written before this change stored the vLLM `prompt_tokens` value as-is,
+  so `Prompt` included `Cached` for those requests. Old rows are not rewritten.
+- vLLM reports a cached count only with `--enable-prompt-tokens-details`. Without
+  it, `Cached` shows `-` and `Prompt` keeps the whole prompt for vLLM.
 
 ## Log streams
 
