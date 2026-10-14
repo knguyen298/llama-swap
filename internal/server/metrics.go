@@ -356,18 +356,33 @@ var usagePaths = []string{"usage", "response.usage", "message.usage"}
 
 // extractUsageTokens reads input/output/cached token counts from a usage
 // gjson.Result, handling the field-name differences across endpoints.
+//
+// The input count is normalized to "tokens the backend had to process", the
+// meaning llama.cpp's timings.prompt_n already has. OpenAI-style usage reports
+// prompt_tokens (and Responses API input_tokens) with the cached prefix
+// included, so the cached count is subtracted here. Anthropic-style usage
+// already keeps cache_read_input_tokens out of input_tokens and is left as is
+// (#1218).
 func extractUsageTokens(usage gjson.Result) (input, output, cached int64, ok bool) {
 	cached = -1
 	if !usage.Exists() {
 		return
 	}
 
+	// inputIncludesCached records whether the input count already contains the
+	// cached prefix, which decides whether to subtract it at the end.
+	inputIncludesCached := false
 	if v := usage.Get("prompt_tokens"); v.Exists() {
 		input = v.Int()
+		inputIncludesCached = true
 		ok = true
 	} else if v := usage.Get("input_tokens"); v.Exists() {
 		input = v.Int()
 		ok = true
+		// The OpenAI Responses API nests its cached count under
+		// input_tokens_details; Anthropic uses the same top-level field name but
+		// keeps the cache hit out of it.
+		inputIncludesCached = usage.Get("input_tokens_details.cached_tokens").Exists()
 	}
 
 	if v := usage.Get("completion_tokens"); v.Exists() {
@@ -383,10 +398,22 @@ func extractUsageTokens(usage gjson.Result) (input, output, cached int64, ok boo
 		ok = true
 	} else if v := usage.Get("input_tokens_details.cached_tokens"); v.Exists() {
 		cached = v.Int()
+		inputIncludesCached = true
 		ok = true
 	} else if v := usage.Get("prompt_tokens_details.cached_tokens"); v.Exists() {
 		cached = v.Int()
+		inputIncludesCached = true
 		ok = true
+	}
+
+	if inputIncludesCached && cached > 0 {
+		// Clamp: a backend that reports a cached count larger than its prompt
+		// count cannot process a negative number of tokens.
+		if input > cached {
+			input -= cached
+		} else {
+			input = 0
+		}
 	}
 	return
 }
@@ -536,12 +563,11 @@ func buildMetrics(modelID string, start time.Time, inputTokens, outputTokens, ca
 			draftAccTokens = int(accepted.Int())
 		}
 	}
+	// The input count already excludes the cached prefix, either because
+	// extractUsageTokens normalized it (#1218) or because it came from
+	// timings.prompt_n, which never included cache_n. No subtraction here.
 	if timeToFirstToken := responseMetrics.Get("time_to_first_token_ms"); timeToFirstToken.Exists() && timeToFirstToken.Float() > 0 {
-		cachedForRate := cachedTokens
-		if cachedForRate < 0 {
-			cachedForRate = 0
-		}
-		promptPerSecond = float64(inputTokens-cachedForRate) / (timeToFirstToken.Float() / 1000)
+		promptPerSecond = float64(inputTokens) / (timeToFirstToken.Float() / 1000)
 	}
 	if meanInterTokenLatency := responseMetrics.Get("mean_itl_ms"); meanInterTokenLatency.Exists() && meanInterTokenLatency.Float() > 0 {
 		tokensPerSecond = 1000 / meanInterTokenLatency.Float()
