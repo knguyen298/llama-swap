@@ -28,12 +28,16 @@ write, so one meaning holds for all backends:
 
 - `Cached` counts prompt tokens the backend reused from its own prefix cache.
 - `Prompt` counts only the new tokens the backend had to process. It never
-  includes `Cached`, and the two columns add up to the full prompt length.
-- `Prefill` divides `Prompt` by the time to the first token.
+  includes `Cached`.
+- `Prefill` is the prompt rate. llama.cpp, TabbyAPI and oMLX report it. For
+  vLLM, llama-swap divides `Prompt` by the time to the first token.
+- For vLLM and other OpenAI-style usage, `Prompt` and `Cached` add up to the
+  full prompt length. Anthropic usage also keeps `cache_creation_input_tokens`
+  out of `input_tokens`, so the sum can be smaller than the full prompt.
 
 Backends report these fields differently. llama.cpp sends `timings.prompt_n`
 (new tokens) and `timings.cache_n`. vLLM sends `usage.prompt_tokens` with the
-cached prefix included and `usage.prompt_tokens_details.cached_tokens`; with
+cached prefix included and `usage.prompt_tokens_details.cached_tokens`. In
 Anthropic-style usage, `input_tokens` already excludes `cache_read_input_tokens`.
 llama-swap subtracts the cached count from the OpenAI-style totals so that all
 three spellings agree.
