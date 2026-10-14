@@ -1,5 +1,25 @@
 # Changelog
 
+## v265-combined (Oct 14, 2026)
+
+Fork build of upstream v265 with one feature branch merged.
+
+- feat/ui-auth: a new `auth.ui` setting. The default, `apiKeys`, keeps the
+  upstream behavior. With `none`, everything under `/ui/` has no
+  authentication, so a reverse proxy must gate it. Every other path still
+  requires an API key. The web UI sends every request through `/ui/` and holds
+  no key.
+- `auth.ui` and the base path support shipped in v265 share one URL layer:
+  `apiUrl()` adds the `/ui` door after it re-attaches a stripped proxy prefix.
+  Outside the browser the path is unchanged, so the docs-agent CLI keeps using
+  the public door and its API key.
+- `GET /logs` and `GET /upstream` stay on the public path. Their HTML redirect
+  target is relative to that path, so serving them through the door produced
+  `/ui/ui/`.
+- Fork build note: `release.yml` drops the `trigger-tap-update` job. This fork
+  publishes no Homebrew tap, and the absent `TAP_REPO_PAT` secret made every
+  fork release report a failed run.
+
 ## v265 (Oct 14, 2026)
 
 A couple of small improvements:
@@ -11,6 +31,22 @@ A couple of small improvements:
 - [PR #1228](https://github.com/mostlygeek/llama-swap/pull/1228) ui,server: serve the UI under a reverse proxy base path: makes the browser side base-path agnostic (relative asset, redirect, favicon and PWA URLs plus an `apiUrl()` helper that re-attaches a stripped prefix) so llama-swap works behind a plain prefix-stripping proxy at `https://host/subpath/llama-swap/` without routing `/ui`, `/api` and `/v1` at the proxy root; includes an nginx and Caddy guide (#1227) by [@mostlygeek](https://github.com/mostlygeek)
 - [PR #1225](https://github.com/mostlygeek/llama-swap/pull/1225) Add voices override for speech models: adds a `models.capabilities.voices` capability listing the voice ids an upstream server supports, because the non-standard `GET /v1/audio/voices` endpoint returns unreliable responses; falls back to probing that endpoint on a best-effort basis when the list is not set (#1207) by [@mostlygeek](https://github.com/mostlygeek)
 - [PR #1224](https://github.com/mostlygeek/llama-swap/pull/1224) cmd/kubeswap: attach DRA ResourceClaims and mount NFS volumes: adds a repeatable `--resource-claim name=claim` flag so backends can get GPUs via the NVIDIA DRA driver (kubeswap only references the claim, pods sharing a claim share its device) and an `nfs:server/export:path[:ro]` kind for `--volume` so models can be mounted from NFS without a static PV/PVC per export (#1222) by [@gabrielcosi](https://github.com/gabrielcosi)
+
+## v264-combined (Oct 13, 2026)
+
+Fork build of upstream v264 with one feature branch merged.
+
+- feat/ui-auth: a new `auth.ui` setting. The default, `apiKeys`, keeps the
+  upstream behavior. With `none`, everything under `/ui/` has no
+  authentication, so a reverse proxy must gate it. Every other path still
+  requires an API key. The web UI sends every request through `/ui/` and holds
+  no key. The audio.cpp passthrough added in v264 sits behind the same door, so
+  `/ui/audiocpp/` keeps working with `auth.ui: none`.
+- Upstream v264 adds `models.capabilities.voices`, kubeswap DRA ResourceClaims
+  with NFS volumes, and a Wake-on-LAN confirmation UI.
+- Fork build note: `release.yml` drops the `trigger-tap-update` job. This fork
+  publishes no Homebrew tap, and the absent `TAP_REPO_PAT` secret made every
+  fork release report a failed run.
 
 ## v264 (Oct 12, 2026)
 
