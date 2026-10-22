@@ -1,8 +1,8 @@
 # Changelog
 
-## v265.1-combined (Oct 22, 2026)
+## v266-combined (Oct 22, 2026)
 
-Fork build of upstream v265 with three branches merged: `feat/ui-auth`,
+Fork build of upstream v266 with three branches merged: `feat/ui-auth`,
 `fix/1218-prompt-cached-tokens` and `feat/activity-speed-histogram`. The first
 two are described under v265-combined and are unchanged here.
 
@@ -32,7 +32,38 @@ two are described under v265-combined and are unchanged here.
   publishes no Homebrew tap, and the absent `TAP_REPO_PAT` secret made every
   fork release report a failed run.
 
+## v266 (Oct 22, 2026)
+
+
+This release includes security dependency updates and requested quality of life changes from users:
+
+- the UI no longer expects to be run under a root path making it easier to serve llama-swap behind another proxy
+- the max request size is configurable now. Users should be free to OOM as much as they want. llama-swap ain't your mom!
+- allow manual override of values in /v1/audio/voices. This is a non-standard endpoint but makes working with upstream audio engines a bit nicer
+
+Details below:
+
+- [PR #1224](https://github.com/mostlygeek/llama-swap/pull/1224) cmd/kubeswap: attach DRA ResourceClaims and mount NFS volumes: add repeatable `--resource-claim` and NFS `--volume` support so Kubernetes backends can share a DRA GPU claim and mount models without a static PV and PVC for each export (#1222) by [@gabrielcosi](https://github.com/gabrielcosi)
+- [PR #1225](https://github.com/mostlygeek/llama-swap/pull/1225) Add voices override for speech models: let local models configure `capabilities.voices` so `/v1/audio/voices` returns a reliable list without starting the model or querying the upstream server (#1207) by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1228](https://github.com/mostlygeek/llama-swap/pull/1228) ui,server: serve the UI under a reverse proxy base path: use relative asset, API and redirect paths so the UI works behind a prefix-stripping reverse proxy without routing its endpoints at the proxy root (#1227) by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1249](https://github.com/mostlygeek/llama-swap/pull/1249) internal/server: make the request body size limit configurable: add `maxRequestBodyMB` for model endpoints and Tailcat, replacing the fixed 250 MB cap while retaining 250 MB as the default (#1245) by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1257](https://github.com/mostlygeek/llama-swap/pull/1257) AGENTS.md, go.mod: use go 1.27.3, trim AGENT rules: raise the Go version to 1.27.3, update dependencies and simplify contributor instructions by [@mostlygeek](https://github.com/mostlygeek)
+
+## v265 (Oct 14, 2026)
+
+
+A couple of small improvements:
+
+- support serving llama-swap behind a path on a reverse proxy. Helpful if you want to front llama-swap with nginx and serve it under a specific path.
+- add support for manually defining voices for text to speech models
+- a small kubeswap update
+
+- [PR #1228](https://github.com/mostlygeek/llama-swap/pull/1228) ui,server: serve the UI under a reverse proxy base path: makes the browser side base-path agnostic (relative asset, redirect, favicon and PWA URLs plus an `apiUrl()` helper that re-attaches a stripped prefix) so llama-swap works behind a plain prefix-stripping proxy at `https://host/subpath/llama-swap/` without routing `/ui`, `/api` and `/v1` at the proxy root; includes an nginx and Caddy guide (#1227) by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1225](https://github.com/mostlygeek/llama-swap/pull/1225) Add voices override for speech models: adds a `models.capabilities.voices` capability listing the voice ids an upstream server supports, because the non-standard `GET /v1/audio/voices` endpoint returns unreliable responses; falls back to probing that endpoint on a best-effort basis when the list is not set (#1207) by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1224](https://github.com/mostlygeek/llama-swap/pull/1224) cmd/kubeswap: attach DRA ResourceClaims and mount NFS volumes: adds a repeatable `--resource-claim name=claim` flag so backends can get GPUs via the NVIDIA DRA driver (kubeswap only references the claim, pods sharing a claim share its device) and an `nfs:server/export:path[:ro]` kind for `--volume` so models can be mounted from NFS without a static PV/PVC per export (#1222) by [@gabrielcosi](https://github.com/gabrielcosi)
+
 ## v265-combined (Oct 14, 2026)
+
 
 Fork build of upstream v265 with two branches merged: `feat/ui-auth` and
 `fix/1218-prompt-cached-tokens`.
@@ -61,19 +92,8 @@ Fork build of upstream v265 with two branches merged: `feat/ui-auth` and
   publishes no Homebrew tap, and the absent `TAP_REPO_PAT` secret made every
   fork release report a failed run.
 
-## v265 (Oct 14, 2026)
-
-A couple of small improvements:
-
-- support serving llama-swap behind a path on a reverse proxy. Helpful if you want to front llama-swap with nginx and serve it under a specific path.
-- add support for manually defining voices for text to speech models
-- a small kubeswap update
-
-- [PR #1228](https://github.com/mostlygeek/llama-swap/pull/1228) ui,server: serve the UI under a reverse proxy base path: makes the browser side base-path agnostic (relative asset, redirect, favicon and PWA URLs plus an `apiUrl()` helper that re-attaches a stripped prefix) so llama-swap works behind a plain prefix-stripping proxy at `https://host/subpath/llama-swap/` without routing `/ui`, `/api` and `/v1` at the proxy root; includes an nginx and Caddy guide (#1227) by [@mostlygeek](https://github.com/mostlygeek)
-- [PR #1225](https://github.com/mostlygeek/llama-swap/pull/1225) Add voices override for speech models: adds a `models.capabilities.voices` capability listing the voice ids an upstream server supports, because the non-standard `GET /v1/audio/voices` endpoint returns unreliable responses; falls back to probing that endpoint on a best-effort basis when the list is not set (#1207) by [@mostlygeek](https://github.com/mostlygeek)
-- [PR #1224](https://github.com/mostlygeek/llama-swap/pull/1224) cmd/kubeswap: attach DRA ResourceClaims and mount NFS volumes: adds a repeatable `--resource-claim name=claim` flag so backends can get GPUs via the NVIDIA DRA driver (kubeswap only references the claim, pods sharing a claim share its device) and an `nfs:server/export:path[:ro]` kind for `--volume` so models can be mounted from NFS without a static PV/PVC per export (#1222) by [@gabrielcosi](https://github.com/gabrielcosi)
-
 ## v264-combined (Oct 13, 2026)
+
 
 Fork build of upstream v264 with one feature branch merged.
 
@@ -91,6 +111,7 @@ Fork build of upstream v264 with one feature branch merged.
 
 ## v264 (Oct 12, 2026)
 
+
 This release includes a new `auto:orphans` set for swap matrix rules. This new set automatically includes all models that were not explictly added to a set.  It is defined as `(orphan1 | orphan2 | orphan3 | ...)`. The orphans set is handy for definitions like: `+always & +auto:orphans`, where `+always` is a set of models that are always loaded and should never be swapped out.
 
 The /audiocpp endpoint was added to make working with audio.cpp server eaiser. The `audiocpp_auto` model is automatically used when the endpoint is requested. audio.cpp's OpenAI compatible endpoints can be accessed directly via `/audiocpp/v1/audio/*`. Very handy when used with llama-swap's unified docker container which builds audio.cpp with the UI and native model downloader.
@@ -104,6 +125,7 @@ Thanks to the contributors in this release, especially @knguyen298 for being pat
 - [PR #1220](https://github.com/mostlygeek/llama-swap/pull/1220) internal/capcompat: detect decision models from llama-server's listing: fix decision models being reported as `out: [text]` (and `capabilities.out: [decisions]` failing validation) because discovery only read `/props`; `output_modalities` from `/v1/models` is now used, and tools are only advertised when the model outputs text (#1219) by [@nazeshinjite](https://github.com/nazeshinjite)
 
 ## v263 (Oct 9, 2026)
+
 
 I've been busy, busy, busy and have not had as much time for llama-swap as I
 would like. This release includes reliability improvements, improved
@@ -121,6 +143,7 @@ PR is greatly appreciated.
 
 ## v262 (Oct 2, 2026)
 
+
 systemone models are mega hyped right now. This release adds support for
 /v1/systemone for that fast thinking goodness(?). Also requests missing a
 Content-Type will get one automatically added for the inference endpoints.
@@ -129,6 +152,7 @@ Content-Type will get one automatically added for the inference endpoints.
 - [PR #1194](https://github.com/mostlygeek/llama-swap/pull/1194) internal/server: accept JSON bodies with a missing or wrong Content-Type: fix a misleading "no model id could be identified" 404 when `curl -d` sent JSON as form-urlencoded; a middleware now relabels JSON object bodies as application/json and returns a 400 naming the expected format for unusable bodies (#1192) by [@mostlygeek](https://github.com/mostlygeek)
 
 ## v261 (Sep 30, 2026)
+
 
 This release has a bunch of small compatibility improvements requested by the community.
 Also the changelog summaries have been changed to only AI for the list below. These notes at
@@ -142,6 +166,7 @@ fuck it we have too much AI slop in our lives already.
 - [PR #1182](https://github.com/mostlygeek/llama-swap/pull/1182) Build audio.cpp with static eSpeak-ng and install phoneme data: link eSpeak-ng statically and ship its phoneme data so Kokoro, SanoTTS and Inflect phonemization works without a writable cache (#1181) by [@mostlygeek](https://github.com/mostlygeek)
 
 ## v260
+
 
 This release fixes a crash at startup on macOS 27 with Apple M6 hardware
 (#1178). Hardware detection reads the CPU frequency through gopsutil, which
@@ -157,6 +182,7 @@ were also updated as required by the newer gopsutil.
 - [PR #1180](https://github.com/mostlygeek/llama-swap/pull/1180) go.mod: use gopsutil PR #2163 to fix darwin/arm64 crash: replace gopsutil with a patched fork that guards the CPU frequency probe against a missing property on Apple M6
 
 ## v259
+
 
 Logging is split into three separate streams: proxy, upstream and HTTP access
 logs. HTTP request lines used to be mixed in with the proxy log, which made it
@@ -195,6 +221,7 @@ changelog and uses a newer model for it.
 - Makefile: detect harness before release: use Claude or Codex to generate the changelog and stop with an error when neither is installed
 
 ## v258
+
 
 Tailcat is updated to v0.7.0 and now checks allowed clients in the HTTP
 handler. A client that is not allowed gets a 403 instead of a TCP timeout,
@@ -235,6 +262,7 @@ contributors.
 
 ## v257
 
+
 Adds Kubernetes-backed model lifecycle management with a Helm chart, readiness
 diagnostics, and publishing fixes. Improves CORS controls and forwarded-client
 metrics, automatically discovers backend context and modalities, and refines
@@ -253,6 +281,7 @@ picker, while activity totals remain accurate after pruning.
 - [PR #1153](https://github.com/mostlygeek/llama-swap/pull/1153) ui/playground: add a searchable model picker
 
 ## v256
+
 
 Refreshes Playground chat with a responsive layout, editable prompts, sampling
 controls, and live generation statistics across Chat and the Help agent. Adds a
@@ -274,12 +303,14 @@ memory use, and a storage-layer refactor, alongside release-changelog tooling.
 
 ## v255
 
+
 Updates Tailcat to v0.6.0, including WireGuard preshared-key support for
 Tailcat addresses.
 
 - [PR #1098](https://github.com/mostlygeek/llama-swap/pull/1098) tailcat: update to v0.6.0
 
 ## v254
+
 
 Adds CUDA 13 and arm64 support to unified Docker images, configurable build
 targets, safer Tailcat configuration sharing, and expanded Help-agent limits.
@@ -291,6 +322,7 @@ targets, safer Tailcat configuration sharing, and expanded Help-agent limits.
 
 ## v253
 
+
 Refines the Help experience, adds jq queries for config paths, introduces
 private Tailcat peers, and makes unified CUDA builds configurable.
 
@@ -300,6 +332,7 @@ private Tailcat peers, and makes unified CUDA builds configurable.
 - [PR #1072](https://github.com/mostlygeek/llama-swap/pull/1072) docker/unified: make CUDA version and architectures configurable
 
 ## v252
+
 
 Speeds unified Docker builds, expands documentation and configuration tooling,
 and improves model, WOL proxy, modality, and chat-input support.
@@ -318,6 +351,7 @@ and improves model, WOL proxy, modality, and chat-input support.
 
 ## v251
 
+
 Records disconnected clients accurately, improves server and vLLM metrics, and
 adds deployment, log-rendering, and activity-export improvements.
 
@@ -330,6 +364,7 @@ adds deployment, log-rendering, and activity-export improvements.
 - [PR #1020](https://github.com/mostlygeek/llama-swap/pull/1020) ui-svelte: Add markdown activity export
 
 ## v250
+
 
 Adds audio.cpp, llama-bench, and vLLM-wrapper to the unified image, alongside
 audio task APIs, model metadata, and argv-based vLLM startup support.
@@ -346,6 +381,7 @@ audio task APIs, model metadata, and argv-based vLLM startup support.
 
 ## v249
 
+
 Adds a ComfyUI compatibility endpoint and reorganizes configuration and shared
 package naming.
 
@@ -354,11 +390,13 @@ package naming.
 
 ## v248
 
+
 Preserves percent-encoded paths when proxying requests upstream.
 
 - [PR #988](https://github.com/mostlygeek/llama-swap/pull/988) internal/server,shared: preserve percent encoded in upstream
 
 ## v247
+
 
 Updates the Svelte UI for security and adds inference-host hardware detection.
 
@@ -366,6 +404,7 @@ Updates the Svelte UI for security and adds inference-host hardware detection.
 - [PR #978](https://github.com/mostlygeek/llama-swap/pull/978) internal/hw: detect inference host hardware
 
 ## v246
+
 
 Displays configured selectors in the Models page and improves ROCm GPU-memory
 reporting and Vulkan image diagnostics.
@@ -376,6 +415,7 @@ reporting and Vulkan image diagnostics.
 
 ## v245
 
+
 Adds profile details to the Models page and supports watching Docker
 configuration changes.
 
@@ -385,12 +425,14 @@ configuration changes.
 
 ## v244
 
+
 Reworks matrix evaluation to solve expressions symbolically, greatly improving
 performance for large configurations.
 
 - [PR #960](https://github.com/mostlygeek/llama-swap/pull/960) internal/matrix: solve matrix expressions symbolically
 
 ## v243
+
 
 Relaxes matrix reference constraints and adds a vLLM-wrapper helper for model
 sleep and wake operations.
@@ -401,6 +443,7 @@ sleep and wake operations.
 
 ## v242
 
+
 Adds namespaced peer-model support throughout routing and the UI, fixes a
 concurrent process-start race, and removes the audio upload size limit.
 
@@ -409,6 +452,7 @@ concurrent process-start race, and removes the audio upload size limit.
 - [PR #948](https://github.com/mostlygeek/llama-swap/pull/948) ui-svelte: remove audio file size limit
 
 ## v241
+
 
 Introduces selector strategies and profiles, streamlines model request handling,
 supports more audio voice formats, and adds FFmpeg to the Docker image.
@@ -421,6 +465,7 @@ supports more audio voice formats, and adds FFmpeg to the Docker image.
 
 ## v240
 
+
 Expands inflight request details, adds configurable unload timeouts, and
 reduces UI bundle sizes while preserving YAML capability anchors.
 
@@ -432,11 +477,13 @@ reduces UI bundle sizes while preserving YAML capability anchors.
 
 ## v239
 
+
 Preserves YAML anchors in capability configuration.
 
 - internal/config: preserve yaml anchors in capabilities
 
 ## v238
+
 
 Improves vLLM response metrics and resolves macros in capability fields.
 
@@ -444,6 +491,7 @@ Improves vLLM response metrics and resolves macros in capability fields.
 - [PR #907](https://github.com/mostlygeek/llama-swap/pull/907) internal/config: resolve macros in capabilities fields
 
 ## v237
+
 
 Adds vLLM metrics, timestamps older activity logs, and removes WOL proxy
 restart lag.
@@ -455,6 +503,7 @@ restart lag.
 
 ## v236
 
+
 Adds llama-server model status and persists activity metrics in SQLite.
 
 - [PR #901](https://github.com/mostlygeek/llama-swap/pull/901) internal/server: add status to v1/models for llama-server
@@ -462,6 +511,7 @@ Adds llama-server model status and persists activity metrics in SQLite.
 - fix starhistory
 
 ## v235
+
 
 Shows inflight activity requests, adds llama-tts to builds, and improves build
 version stamping.
@@ -472,6 +522,7 @@ version stamping.
 
 ## v234
 
+
 Rejects excess concurrent requests before streaming and adds model route
 properties.
 
@@ -479,6 +530,7 @@ properties.
 - [PR #886](https://github.com/mostlygeek/llama-swap/pull/886) add /props to modelGetRoutes
 
 ## v233
+
 
 Decouples log broadcasting from writes and makes UI embedding opt-in at build
 time.
@@ -488,12 +540,14 @@ time.
 
 ## v232
 
+
 Refreshes the UI with rounded borders and an updated hero image.
 
 - ui-svelte: add rounded borders
 - update hero image
 
 ## v231
+
 
 Adds the shadcn-svelte UI foundation, theming, and refreshed screenshots.
 
@@ -503,11 +557,13 @@ Adds the shadcn-svelte UI foundation, theming, and refreshed screenshots.
 
 ## v230
 
+
 Adds a configurable configuration-directory option and watcher support.
 
 - [PR #873](https://github.com/mostlygeek/llama-swap/pull/873) internal/config,watcher: add -config-dir
 
 ## v229
+
 
 Adds ignored upstream paths, failed-request captures, and activity columns,
 with improved performance-menu visibility.
@@ -519,11 +575,13 @@ with improved performance-menu visibility.
 
 ## v228
 
+
 Meters /upstream requests through the metrics middleware.
 
 - [PR #858](https://github.com/mostlygeek/llama-swap/pull/858) proxy: meter /upstream requests via metrics middleware
 
 ## v227
+
 
 Adds experimental Windows GPU monitoring, request metadata, scheduler-based
 concurrency limits, and a MacPorts installation option.
@@ -536,11 +594,13 @@ concurrency limits, and a MacPorts installation option.
 
 ## v226
 
+
 Improves manual model loading and cancellation in the UI.
 
 - [PR #847](https://github.com/mostlygeek/llama-swap/pull/847) ui: improve manual model load and cancel
 
 ## v225
+
 
 Adds model capabilities and a new scheduler, while refactoring authentication
 and showing a warning for network listeners.
@@ -553,6 +613,7 @@ and showing a warning for network listeners.
 
 ## v224
 
+
 Fixes websocket and unload regressions, removes legacy proxy code, and improves
 Docker arm64 downloads.
 
@@ -564,11 +625,13 @@ Docker arm64 downloads.
 
 ## v223
 
+
 Adds macOS GPU monitoring using mactop and ioreg.
 
 - [PR #816](https://github.com/mostlygeek/llama-swap/pull/816) perf: add macOS GPU monitoring via mactop and ioreg
 
 ## v222
+
 
 Improves Windows process shutdown behavior.
 
@@ -576,11 +639,13 @@ Improves Windows process shutdown behavior.
 
 ## v221
 
+
 Makes model shutdown and load streaming more robust.
 
 - process,router: make model shutdown and load-streaming robust
 
 ## v220
+
 
 Adds a UI load-testing tool and returns JSON responses for concurrency limits.
 
@@ -589,6 +654,7 @@ Adds a UI load-testing tool and returns JSON responses for concurrency limits.
 
 ## v219
 
+
 Includes release refinements and updates the UI build directory.
 
 - Makefile,internal/server: various release tweaks
@@ -596,12 +662,14 @@ Includes release refinements and updates the UI build directory.
 
 ## v218
 
+
 Introduces a new routing backend and adds a power-draw column for ROCm metrics.
 
 - [PR #790](https://github.com/mostlygeek/llama-swap/pull/790) Introduce new routing backend
 - [PR #788](https://github.com/mostlygeek/llama-swap/pull/788) Add new power draw column header for rocm-smi monitoring
 
 ## v217
+
 
 Improves ROCm and Windows GPU monitoring, plus configuration and automation
 maintenance.
@@ -614,17 +682,20 @@ maintenance.
 
 ## v216
 
+
 Updates the UI link to the performance discussion thread.
 
 - ui-svelte: update link to performance discussion thread
 
 ## v215
 
+
 Adds ROCm GPU statistics through rocm-smi.
 
 - [PR #767](https://github.com/mostlygeek/llama-swap/pull/767) Add ROCm stats via rocm-smi
 
 ## v214
+
 
 Fixes cached-token totals and updates nvidia-smi polling for newer drivers.
 
@@ -633,6 +704,7 @@ Fixes cached-token totals and updates nvidia-smi polling for newer drivers.
 
 ## v213
 
+
 Updates UI packages and improves compatibility with v1/messages and
 v1/responses endpoints.
 
@@ -640,6 +712,7 @@ v1/responses endpoints.
 - [PR #758](https://github.com/mostlygeek/llama-swap/pull/758) proxy,ui-svelte: improve support for v1/messages and v1/responses
 
 ## v212
+
 
 Adds multi-architecture CPU images, Prometheus performance metrics, automatic
 themes, and several CI and proxy fixes.
@@ -658,11 +731,13 @@ themes, and several CI and proxy fixes.
 
 ## v211
 
+
 Fixes process logging when matrix configuration selects processes.
 
 - proxy: fix logger not checking matrix for processes
 
 ## v210
+
 
 Fixes non-streaming response durations and improves no-history and log
 monitoring behavior.
@@ -671,6 +746,7 @@ monitoring behavior.
 - [PR #721](https://github.com/mostlygeek/llama-swap/pull/721) fix: ?no-history flag and improve /logs monitoring docs
 
 ## v209
+
 
 Refactors the Activity page, removes the macro-length cap, and improves theme
 and log-panel controls.
@@ -682,6 +758,7 @@ and log-panel controls.
 
 ## v208
 
+
 Adds reasoning-content support and prompt-processing histograms, and fixes
 architecture-specific installation downloads.
 
@@ -691,9 +768,11 @@ architecture-specific installation downloads.
 
 ## v207
 
+
 No user-facing changes were included between v206 and v207.
 
 ## v206
+
 
 Fixes UI histogram calculation and publishes unified Docker images on scheduled
 runs.
@@ -703,6 +782,7 @@ runs.
 
 ## v205
 
+
 Replaces the file watcher with stat polling and SIGHUP reloads, and adds uv to
 the unified Docker image.
 
@@ -710,6 +790,7 @@ the unified Docker image.
 - [PR #681](https://github.com/mostlygeek/llama-swap/pull/681) docker/unified: add uv via pip install
 
 ## v204
+
 
 Fixes matrix and process-stop races and improves unified-image build workflows.
 
@@ -719,6 +800,7 @@ Fixes matrix and process-stop races and improves unified-image build workflows.
 - [PR #669](https://github.com/mostlygeek/llama-swap/pull/669) docker/unified: add spirv-headers to fix vulkan build
 
 ## v203
+
 
 Adds zstd capture compression, fixes swap races, and restores Linux arm64 build
 targets.
@@ -730,6 +812,7 @@ targets.
 
 ## v202
 
+
 Introduces solver-based matrix model swapping, updates matrix documentation,
 and fixes UI security issues.
 
@@ -740,6 +823,7 @@ and fixes UI security issues.
 
 ## v201
 
+
 Restores proxy timeouts and derives a rootless unified image from the root
 container.
 
@@ -747,6 +831,7 @@ container.
 - [PR #644](https://github.com/mostlygeek/llama-swap/pull/644) docker/unified: derive rootless image from root container
 
 ## v200
+
 
 Adds a rootless unified image, configurable HTTP and CUDA settings, preserved
 metrics durations, and several Docker and CI improvements.
