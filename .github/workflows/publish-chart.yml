@@ -33,6 +33,11 @@ on:
   push:
     tags:
       - "v*"
+      # Fork change: this build is tagged vNNN-combined, and the job below needs
+      # a plain vNNN to derive the chart version from. Excluding the suffix at the
+      # trigger skips the run instead of failing it. A manual run still publishes
+      # any chart you want, because the version input takes the release number.
+      - "!v*-combined"
 
   # Allows manual triggering of the workflow
   workflow_dispatch:
