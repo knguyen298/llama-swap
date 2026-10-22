@@ -208,6 +208,9 @@ export interface ActivityStatsData {
   total_input_tokens: number;
   total_output_tokens: number;
   total_cache_tokens: number;
+  // The equal-width bins the Activity page used before the log-bucket charts.
+  // The server still returns them for older clients; the UI no longer renders
+  // them, so a new UI against an old binary shows the empty state instead.
   prompt_histogram: HistogramData | null;
   gen_histogram: HistogramData | null;
   // Geometric-bucket speed distributions, and the sample counts that explain
