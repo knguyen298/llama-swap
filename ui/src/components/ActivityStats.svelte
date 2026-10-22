@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { ActivityStatsData } from "../lib/types";
   import { persistentStore } from "../stores/persistent";
-  import TokenHistogram from "./TokenHistogram.svelte";
   import SpeedHistogram from "./SpeedHistogram.svelte";
   import { ChevronDown, X } from "@lucide/svelte";
   import * as Card from "$lib/components/ui/card/index.js";
@@ -50,12 +49,6 @@
             rule={speedRule(stats.prompt_speed, "prompt tokens/sec")}
             colorClass="text-amber-500 dark:text-amber-400"
           />
-        {:else if stats?.prompt_histogram}
-          <TokenHistogram
-            data={stats.prompt_histogram}
-            unit="prompt tokens/sec"
-            colorClass="text-amber-500 dark:text-amber-400"
-          />
         {:else}
           <div class="text-muted-foreground py-6 text-center text-sm">No prompt speed data yet</div>
         {/if}
@@ -72,8 +65,6 @@
             rule={speedRule(stats.gen_speed, "tokens/sec")}
             colorClass="text-blue-500 dark:text-blue-400"
           />
-        {:else if stats?.gen_histogram}
-          <TokenHistogram data={stats.gen_histogram} unit="tokens/sec" />
         {:else}
           <div class="text-muted-foreground py-6 text-center text-sm">No generation speed data yet</div>
         {/if}
