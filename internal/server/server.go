@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -281,6 +282,10 @@ func (s *Server) localPeerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.serveConfiguredVoices(w, r, data.ModelID) {
+		return
+	}
+
 	switch {
 	case s.local.Handles(data.ModelID):
 		s.logs.ProxyLogs.Debugf("dispatch: using local process for model: %s", data.ModelID)
@@ -291,6 +296,25 @@ func (s *Server) localPeerHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		swaputil.SendError(w, r, router.ErrNoRouterFound)
 	}
+}
+
+// serveConfiguredVoices answers GET /v1/audio/voices from the model's
+// capabilities.voices when it is set, without starting the model or contacting
+// the upstream. It reports whether it wrote the response.
+func (s *Server) serveConfiguredVoices(w http.ResponseWriter, r *http.Request, modelID string) bool {
+	if r.Method != http.MethodGet || r.URL.Path != "/v1/audio/voices" {
+		return false
+	}
+	mc, ok := s.cfg.Models[modelID]
+	if !ok || len(mc.Capabilities.Voices) == 0 {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"voices": mc.Capabilities.Voices,
+		"model":  modelID,
+	})
+	return true
 }
 
 // stripVersionPrefix rewrites versionless /v/... requests to their /... form
@@ -313,7 +337,7 @@ func stripAudioAPIPrefix(r *http.Request) {
 func (s *Server) routes() {
 
 	authMW := CreateAuthMiddleware(s.cfg)
-	modelMWs := []chain.Middleware{authMW, createContentTypeMiddleware()}
+	modelMWs := []chain.Middleware{authMW, createContentTypeMiddleware(s.cfg.MaxRequestBodyBytes())}
 	// globalConcurrencyLimit guards the top of the inference chain; a limit of
 	// 0 (the default) means no limit, so the handler is left out of the chain
 	// entirely rather than wrapping every request in a no-op semaphore.
@@ -357,7 +381,13 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /wol-health", handleHealth)
 	mux.HandleFunc("GET /{$}", handleRootRedirect)
 
-	// Embedded UI.
+	// Embedded UI. ServeMux's built-in /ui -> /ui/ redirect uses an absolute
+	// Location, which would drop a prefix-stripping reverse proxy's path
+	// prefix; this exact-match route keeps it relative instead (308 preserves
+	// the method).
+	mux.HandleFunc("/ui", func(w http.ResponseWriter, r *http.Request) {
+		redirectRelative(w, "ui/", http.StatusPermanentRedirect)
+	})
 	mux.Handle("GET /ui/", chain.New(authMW).ThenFunc(s.handleUI))
 	// The browser fetches the web app manifest - and the icons it references -
 	// itself while deciding whether to offer installing the PWA, and it has no
@@ -395,6 +425,11 @@ func (s *Server) routes() {
 	// /ws may not start an unloaded model.
 	mux.Handle("/comfyui", apiChain.ThenFunc(handleComfyUIRedirect))
 	mux.Handle("/comfyui/{comfyPath...}", apiChain.ThenFunc(s.handleComfyUI))
+
+	// audio.cpp UI passthrough. This uses the fixed audiocpp_auto model so
+	// requests do not have to name a model.
+	mux.Handle("/audiocpp", apiChain.ThenFunc(handleAudioCppRedirect))
+	mux.Handle("/audiocpp/{audioCppPath...}", apiChain.ThenFunc(s.handleAudioCpp))
 
 	// API group (API-key protected) consumed by the UI.
 	mux.Handle("POST /api/models/unload", apiChain.ThenFunc(s.handleAPIUnloadAll))
@@ -459,12 +494,21 @@ func (s *Server) ServeTailcatHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if inference && r.Method != http.MethodOptions {
 		// Normalize first so the model lookup sees the same body format the
-		// model chain will.
-		if bodyErr := prepareModelBody(w, r); bodyErr != nil {
+		// model chain will. A body over the size cap gets a 413 so the client
+		// knows to send less; other body errors look like an unknown model.
+		if bodyErr := prepareModelBody(w, r, s.cfg.MaxRequestBodyBytes()); bodyErr != nil {
+			if bodyErr.status == http.StatusRequestEntityTooLarge {
+				swaputil.SendResponse(w, r, bodyErr.status, bodyErr.message)
+				return
+			}
 			http.NotFound(w, r)
 			return
 		}
 		model, err := swaputil.ExtractModel(r)
+		if bodyErr := bodyTooLargeFrom(err); bodyErr != nil {
+			swaputil.SendResponse(w, r, bodyErr.status, bodyErr.message)
+			return
+		}
 		if err != nil || !tailcatModelAllowed(tc.Models, model) {
 			http.NotFound(w, r)
 			return
