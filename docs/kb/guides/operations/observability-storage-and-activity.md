@@ -4,7 +4,7 @@ summary: Use logs, metrics, captures and the Activity view to diagnose requests 
 category: guides
 tags: [operations, logs, metrics, activity, captures, stdout, http]
 config_keys: [logLevel, logToStdout, metricsMaxInMemory, captureBuffer]
-updated: 2026-10-14
+updated: 2026-10-22
 ---
 
 # Observability, storage and Activity
@@ -73,3 +73,42 @@ What goes wrong:
 
 Do not put secrets in captures or debug logs. Reduce retention after diagnosing
 an issue.
+
+## Speed charts on the Activity view
+
+The Activity cards plot prompt tokens per second and generated tokens per second,
+one value per request. Each chart uses a log axis, so every bucket covers the
+same multiplicative range. The grid starts at 12 buckets per decade. It gets
+finer, up to 192, when the plotted range is too narrow to fill 16 bars, and
+coarser, down to 3, when the chart would otherwise draw more bars than requests,
+which is four requests per bar. A model that runs at 60 tokens/sec within 10
+percent therefore draws about 17 bars, not 2. Each chart states the factor one bar covers, so two time
+ranges stay comparable. The Y axis is the share of the reported requests, not a
+raw count.
+
+llama-swap drops a rate when it cannot describe throughput:
+
+- a prefill rate for a prompt shorter than 32 tokens, because the value then
+  measures request overhead. The median reported rate is 5 tokens/sec for
+  one-token prompts and 186 tokens/sec for 32 to 127 tokens.
+- a generation rate for a completion shorter than 2 tokens, because an
+  inter-token latency needs a gap between two tokens.
+- any rate above 100,000 tokens/sec.
+
+The line above each chart states how many requests reported a rate and how many
+were dropped. Rates are also clipped to a display window of the 0.5th to the
+99.5th percentile. Hover the kink at an end of the axis to see how many requests
+sit outside that window. The p50, p90, p95 and p99 lines are always drawn, each
+with its own dash pattern. Hover a bar to print its bucket range and its
+request count in the two rows above the chart. Hover a percentile line to print
+its value in one of those rows. A percentile line appears only when at least
+five samples sit beyond it, so a small model fleet shows fewer lines than a large
+one.
+
+What goes wrong:
+
+- An upstream that reports no timings adds no samples. A pooled chart therefore
+  describes only the requests that reported rates, and it mixes every model.
+  Filter by model before you compare speeds.
+- A pooled chart shows the mix of your models, not the speed of any one of them.
+  Two humps usually mean two models, not one unstable model.
