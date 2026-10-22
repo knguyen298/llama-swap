@@ -138,27 +138,65 @@ func (r *activityRepository) Stats(ctx context.Context, query store.ActivityStat
 			COALESCE(MAX(id), 0),
 			COALESCE(SUM(input_tokens), 0),
 			COALESCE(SUM(output_tokens), 0),
-			COALESCE(SUM(CASE WHEN cache_tokens > 0 THEN cache_tokens ELSE 0 END), 0)
+			COALESCE(SUM(CASE WHEN cache_tokens > 0 THEN cache_tokens ELSE 0 END), 0),
+			COUNT(*)
 		FROM activity`+where, args...)
 
 	var stats store.ActivityStats
-	if err := row.Scan(&stats.TotalRequests, &stats.TotalInputTokens, &stats.TotalOutputTokens, &stats.TotalCacheTokens); err != nil {
+	var rowsInScope int
+	if err := row.Scan(&stats.TotalRequests, &stats.TotalInputTokens, &stats.TotalOutputTokens,
+		&stats.TotalCacheTokens, &rowsInScope); err != nil {
 		return store.ActivityStats{}, fmt.Errorf("activity stats: %w", err)
 	}
 
-	promptValues, genValues, err := r.speedValues(ctx, where, args)
+	samples, err := r.speedSamples(ctx, where, args)
 	if err != nil {
 		return store.ActivityStats{}, err
 	}
-	stats.PromptHistogram = store.NewHistogram(promptValues)
-	stats.GenerationHistogram = store.NewHistogram(genValues)
+	// The legacy histograms keep their old input: every reported rate, with no
+	// usability rule and no outlier control. Existing clients read those fields
+	// and must keep seeing the same numbers.
+	stats.PromptHistogram = store.NewHistogram(samples.legacyPrompt)
+	stats.GenerationHistogram = store.NewHistogram(samples.legacyGen)
+	stats.PromptSpeed = store.NewSpeedDistribution(samples.prompt, store.MinPromptTokens)
+	stats.GenerationSpeed = store.NewSpeedDistribution(samples.gen, store.MinGenTokens)
+	stats.PromptSamples = speedCounts(rowsInScope, samples.reportedPrompt, len(samples.prompt))
+	stats.GenerationSamples = speedCounts(rowsInScope, samples.reportedGen, len(samples.gen))
 	return stats, nil
 }
 
-// speedValues reads both histogram source columns in a single scan. Zero
-// values mean the speed was not reported and are excluded per column. No
-// ORDER BY: store.NewHistogram sorts the values itself.
-func (r *activityRepository) speedValues(ctx context.Context, where string, args []any) (prompt, gen []float64, err error) {
+// speedCounts turns the three facts a repository can observe into the sample
+// report the UI prints above each chart. Excluded rates were reported but fail a
+// store.UsableSpeed rule, and missing rates were never reported at all.
+func speedCounts(rows, reported, usable int) store.SpeedSampleCounts {
+	return store.SpeedSampleCounts{
+		Rows:     rows,
+		Reported: reported,
+		Usable:   usable,
+		Excluded: reported - usable,
+		Missing:  rows - reported,
+	}
+}
+
+// activitySpeedSamples holds one scan of the rate columns, split by how much
+// the chart can trust each value.
+type activitySpeedSamples struct {
+	// legacyPrompt and legacyGen hold every reported rate, which is the input
+	// the shipped HistogramData fields are computed from.
+	legacyPrompt []float64
+	legacyGen    []float64
+	// prompt and gen hold only rates that pass store.UsableSpeed.
+	prompt         []float64
+	gen            []float64
+	reportedPrompt int
+	reportedGen    int
+}
+
+// speedSamples reads both rate columns and their token counts in a single scan.
+// A rate at or below zero means the upstream reported nothing. No ORDER BY: the
+// histogram and distribution builders sort their own input.
+func (r *activityRepository) speedSamples(ctx context.Context, where string, args []any) (activitySpeedSamples, error) {
+	var out activitySpeedSamples
 	filter := where
 	if filter == "" {
 		filter = ` WHERE prompt_per_second > 0 OR tokens_per_second > 0`
@@ -166,25 +204,34 @@ func (r *activityRepository) speedValues(ctx context.Context, where string, args
 		filter += ` AND (prompt_per_second > 0 OR tokens_per_second > 0)`
 	}
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT prompt_per_second, tokens_per_second FROM activity`+filter, args...)
+		`SELECT prompt_per_second, tokens_per_second, input_tokens, output_tokens FROM activity`+filter, args...)
 	if err != nil {
-		return nil, nil, fmt.Errorf("activity histogram: %w", err)
+		return out, fmt.Errorf("activity histogram: %w", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var promptValue, genValue float64
-		if err := rows.Scan(&promptValue, &genValue); err != nil {
-			return nil, nil, fmt.Errorf("activity histogram row: %w", err)
+		var inputTokens, outputTokens int
+		if err := rows.Scan(&promptValue, &genValue, &inputTokens, &outputTokens); err != nil {
+			return out, fmt.Errorf("activity histogram row: %w", err)
 		}
 		if promptValue > 0 {
-			prompt = append(prompt, promptValue)
+			out.reportedPrompt++
+			out.legacyPrompt = append(out.legacyPrompt, promptValue)
+			if store.UsableSpeed(promptValue, inputTokens, store.MinPromptTokens) {
+				out.prompt = append(out.prompt, promptValue)
+			}
 		}
 		if genValue > 0 {
-			gen = append(gen, genValue)
+			out.reportedGen++
+			out.legacyGen = append(out.legacyGen, genValue)
+			if store.UsableSpeed(genValue, outputTokens, store.MinGenTokens) {
+				out.gen = append(out.gen, genValue)
+			}
 		}
 	}
-	return prompt, gen, rows.Err()
+	return out, rows.Err()
 }
 
 func (r *activityRepository) Prune(ctx context.Context, maxRows int) error {
