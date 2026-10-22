@@ -194,6 +194,10 @@ export interface APIEventEnvelope {
   data: string;
 }
 
+import type { SpeedDistribution, SpeedSampleCounts } from "./speedChart";
+
+export type { SpeedDistribution, SpeedSampleCounts };
+
 export interface HistogramData {
   bins: number[];
   min: number;
@@ -211,6 +215,12 @@ export interface ActivityStatsData {
   total_cache_tokens: number;
   prompt_histogram: HistogramData | null;
   gen_histogram: HistogramData | null;
+  // Geometric-bucket speed distributions, and the sample counts that explain
+  // what each distribution describes. Absent from older servers.
+  prompt_speed?: SpeedDistribution | null;
+  gen_speed?: SpeedDistribution | null;
+  prompt_samples?: SpeedSampleCounts;
+  gen_samples?: SpeedSampleCounts;
 }
 
 export interface VersionInfo {

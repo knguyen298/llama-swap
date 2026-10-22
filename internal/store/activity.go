@@ -135,6 +135,13 @@ type ActivityStats struct {
 	TotalCacheTokens    int            `json:"total_cache_tokens"`
 	PromptHistogram     *HistogramData `json:"prompt_histogram"`
 	GenerationHistogram *HistogramData `json:"gen_histogram"`
+	// Speed distributions are the geometric-bucket view the Activity charts use.
+	// The HistogramData fields above stay for clients that still read them.
+	PromptSpeed     *SpeedDistribution `json:"prompt_speed"`
+	GenerationSpeed *SpeedDistribution `json:"gen_speed"`
+	// Sample counts state how many requests each distribution describes.
+	PromptSamples     SpeedSampleCounts `json:"prompt_samples"`
+	GenerationSamples SpeedSampleCounts `json:"gen_samples"`
 }
 
 // HistogramData is a binned distribution with percentile summaries.
@@ -214,4 +221,309 @@ func percentile(sorted []float64, p float64) float64 {
 	upper := int(math.Ceil(rank))
 	fraction := rank - float64(lower)
 	return sorted[lower] + fraction*(sorted[upper]-sorted[lower])
+}
+
+// Speed charts bucket request rates on a geometric grid, so every bucket covers
+// the same multiplicative range. Reported rates span several decades, and a
+// single extreme value stretches an equal-width axis until every real sample
+// shares one bucket. A geometric grid keeps one bucket worth one multiplicative
+// step everywhere on the chart, and its bucket index is cheap arithmetic that a
+// future stored counter can reuse.
+//
+// The grid resolution adapts to the plotted window. Twelve steps per decade
+// suits data that spans decades, and gives a window of 2.4 decades 29 buckets.
+// The same resolution gives one model running at plus or minus 10 percent two
+// buckets, which shows no shape at all, so SpeedStepsFor refines the grid up to
+// 16 times as fine for a narrow window, and coarsens it to a quarter for a
+// sample too small to fill the bars.
+// Resolutions come from SpeedResolutions, where each value divides the next, so
+// a finer grid contains every coarser edge and charts at different resolutions
+// stay comparable.
+const (
+	// SpeedStepsPerDecade is the base grid resolution and the floor for the
+	// adaptive one. One bucket spans 1/SpeedStepsPerDecade decades.
+	SpeedStepsPerDecade = 12
+
+	// SpeedStepsFloor is the coarsest grid the ladder offers. A bucket spans a
+	// factor of 2.15 there, which suits a sample too small to fill a finer grid.
+	SpeedStepsFloor = 3
+
+	// SpeedSamplesPerBar is the fewest samples one bar should carry. It caps the
+	// bar count for a small sample, so the cap moves smoothly with n instead of
+	// switching on at a fixed sample size.
+	SpeedSamplesPerBar = 4
+
+	// SpeedBarsTarget is the number of bars a chart aims for. Sixteen is enough
+	// to see a mode and a tail, and the old equal-width chart used 16 bins for
+	// a sample this size, so the two charts read at a similar coarseness.
+	SpeedBarsTarget = 16
+
+	// SpeedBarsFloor is the target for a very small sample, where more bars than
+	// samples turns the chart into a comb of single-request bars.
+	SpeedBarsFloor = 4
+
+	// MinPromptTokens is the smallest prompt a reported prefill rate can
+	// describe. A shorter prompt measures request overhead, not speed. In an
+	// 86 day sample of 45,929 requests the median prefill rate was 5 tokens/sec
+	// at one input token, 55 tokens/sec at 8 to 31 tokens, and 186 tokens/sec at
+	// 32 to 127 tokens.
+	MinPromptTokens = 32
+
+	// MinGenTokens is the smallest completion a reported generation rate can
+	// describe. An inter-token latency needs a gap between two tokens, so a
+	// one-token completion cannot yield a rate.
+	MinGenTokens = 2
+
+	// MaxSpeedPerSecond rejects rates no upstream sustains for one request. A
+	// one-token completion that reports a 0.001 ms inter-token latency yields
+	// exactly 1,000,000 tokens/sec, which is not a measurement.
+	MaxSpeedPerSecond = 100000
+)
+
+// SpeedResolutions lists the allowed grids, coarsest first. Each value divides
+// the next, so the edges of a coarse grid are a subset of a finer one.
+var SpeedResolutions = []int{3, 6, 12, 24, 48, 96, 192}
+
+// SpeedBucketIndex returns the base-grid index that holds value. Values below 1
+// give negative indexes, which is intended: the grid is a ladder over decades.
+//
+// Do not use this to count samples into a published edge list. The round trip
+// math.Floor(math.Log10(math.Pow(10, float64(k)/steps))*steps) misses k on 10 to
+// 19 percent of edges, because math.Log10 rounds twice. NewSpeedDistribution
+// compares values against the edges instead.
+func SpeedBucketIndex(value float64) int {
+	return SpeedBucketIndexAt(value, SpeedStepsPerDecade)
+}
+
+// SpeedBucketIndexAt returns the index that holds value on a grid with the given
+// steps per decade.
+func SpeedBucketIndexAt(value float64, steps int) int {
+	return int(math.Floor(math.Log10(value) * float64(steps)))
+}
+
+// SpeedEdge returns the lower bound of base-grid index k.
+func SpeedEdge(k int) float64 {
+	return SpeedEdgeAt(k, SpeedStepsPerDecade)
+}
+
+// SpeedEdgeAt returns the lower bound of index k on a grid with the given steps
+// per decade.
+func SpeedEdgeAt(k, steps int) float64 {
+	return math.Pow(10, float64(k)/float64(steps))
+}
+
+// SpeedEdges returns the base-grid edges that cover [lo, hi].
+func SpeedEdges(lo, hi float64) []float64 {
+	return SpeedEdgesAt(lo, hi, SpeedStepsPerDecade)
+}
+
+// SpeedEdgesAt returns the grid edges that cover [lo, hi], rounded outward to
+// the grid so the plotted range always contains the window. It returns at least
+// two edges, even when every value is equal.
+func SpeedEdgesAt(lo, hi float64, steps int) []float64 {
+	if steps <= 0 {
+		steps = SpeedStepsPerDecade
+	}
+	if !(hi >= lo) {
+		lo, hi = hi, lo
+	}
+	first := SpeedBucketIndexAt(lo, steps)
+	last := int(math.Ceil(math.Log10(hi) * float64(steps)))
+	if last <= first {
+		last = first + 1
+	}
+	edges := make([]float64, 0, last-first+1)
+	for k := first; k <= last; k++ {
+		edges = append(edges, SpeedEdgeAt(k, steps))
+	}
+	return edges
+}
+
+// SpeedBarsFor returns how many bars a chart of n samples aims for. A sample
+// too small to fill the target gets the floor instead, so 24 requests draw
+// about 6 bars rather than 16 bars of one or two requests each.
+func SpeedBarsFor(n int) int {
+	target := int(math.Ceil(math.Sqrt(float64(max(n, 0)))))
+	if target < SpeedBarsFloor {
+		target = SpeedBarsFloor
+	}
+	if target > SpeedBarsTarget {
+		target = SpeedBarsTarget
+	}
+	return target
+}
+
+// SpeedStepsFor returns the grid resolution for the window [lo, hi] and n
+// samples. It refines the base grid until the window holds SpeedBarsFor(n) bars,
+// and it coarsens the grid when the window would hold more bars than
+// max(n/SpeedSamplesPerBar, SpeedBarsFor(n)), because a bar holding one or two
+// requests shows binning noise rather than a distribution. Resolution always
+// comes from SpeedResolutions, so a window that drifts slightly keeps its grid
+// instead of redrawing at a new scale.
+func SpeedStepsFor(lo, hi float64, n int) int {
+	if !(hi > lo) || lo <= 0 {
+		return SpeedStepsPerDecade
+	}
+	span := math.Log10(hi / lo)
+	if span <= 0 {
+		return SpeedStepsPerDecade
+	}
+	target := SpeedBarsFor(n)
+	if float64(SpeedStepsPerDecade)*span < float64(target) {
+		for _, steps := range SpeedResolutions {
+			if float64(steps)*span >= float64(target) {
+				return steps
+			}
+		}
+		return SpeedResolutions[len(SpeedResolutions)-1]
+	}
+	maxBars := max(target, n/SpeedSamplesPerBar)
+	if float64(SpeedStepsPerDecade)*span <= float64(maxBars) {
+		return SpeedStepsPerDecade
+	}
+	// Coarsen, finest fitting grid first, so the bars stay as numerous as the
+	// sample allows.
+	for i := len(SpeedResolutions) - 1; i >= 0; i-- {
+		steps := SpeedResolutions[i]
+		if steps > SpeedStepsPerDecade {
+			continue
+		}
+		if float64(steps)*span <= float64(maxBars) {
+			return steps
+		}
+	}
+	return SpeedStepsFloor
+}
+
+// SpeedPercentileSupported reports whether n samples support percentile p. It
+// requires at least five samples beyond the requested percentile, so p50 needs
+// 10 samples, p90 needs 50, p95 needs 100 and p99 needs 500. A p99.5 of 24
+// samples is an interpolation between the top two values, not a tail estimate.
+func SpeedPercentileSupported(n int, p float64) bool {
+	if p <= 0 || p >= 100 {
+		return false
+	}
+	return float64(n)*float64(100-p)/100 >= 5
+}
+
+// SpeedWindow is the range a chart plots. Values outside it still count, and
+// SpeedDistribution reports them in Below and Above.
+type SpeedWindow struct {
+	Lo float64 `json:"lo"`
+	Hi float64 `json:"hi"`
+}
+
+// SpeedDistribution is a geometric-bucket view of one rate column.
+type SpeedDistribution struct {
+	// StepsPerDecade is the grid resolution, so a client can rebuild the index
+	// arithmetic instead of reading Edges.
+	StepsPerDecade int       `json:"stepsPerDecade"`
+	Edges          []float64 `json:"edges"`
+	// Counts has len(Edges)+1 entries. Index 0 counts samples below Edges[0],
+	// index i counts samples in [Edges[i-1], Edges[i]), and the last index
+	// counts samples at or above the final edge. The entries sum to Count.
+	Counts []int       `json:"counts"`
+	Below  int         `json:"below"`
+	Above  int         `json:"above"`
+	Window SpeedWindow `json:"window"`
+	// Count is the number of usable samples, which is Min and Max over the same
+	// values. Reported, Excluded and Missing live in SpeedSampleCounts.
+	Count int     `json:"count"`
+	Min   float64 `json:"min"`
+	Max   float64 `json:"max"`
+	// MinTokens and MaxRatePerSecond restate the usability rules the query
+	// applied, so the UI can explain exclusions without duplicating constants.
+	MinTokens        int     `json:"minTokens"`
+	MaxRatePerSecond float64 `json:"maxRatePerSecond"`
+	// Percentiles are nil when Count cannot support them.
+	P50 *float64 `json:"p50"`
+	P90 *float64 `json:"p90"`
+	P95 *float64 `json:"p95"`
+	P99 *float64 `json:"p99"`
+}
+
+// SpeedSampleCounts states where the samples came from, because the answer is
+// never all requests: an upstream either omits timings or reports them as zero
+// or negative.
+type SpeedSampleCounts struct {
+	Rows     int `json:"rows"`     // requests in scope
+	Reported int `json:"reported"` // requests that reported a rate above zero
+	Usable   int `json:"usable"`   // reported rates the chart can trust
+	Excluded int `json:"excluded"` // reported rates rejected by the rules above
+	Missing  int `json:"missing"`  // requests that reported no rate at all
+}
+
+// NewSpeedDistribution bins values on the shared grid and returns nil when no
+// value is usable. minTokens is the rule the caller applied, which the result
+// echoes back for the UI. The window is p0.5 to p99.5 once 200 samples support
+// those percentiles, and the full range otherwise. The input is not modified.
+func NewSpeedDistribution(values []float64, minTokens int) *SpeedDistribution {
+	if len(values) == 0 {
+		return nil
+	}
+
+	sorted := append([]float64(nil), values...)
+	sort.Float64s(sorted)
+
+	lo, hi := SpeedWindowFor(sorted)
+	steps := SpeedStepsFor(lo, hi, len(sorted))
+	edges := SpeedEdgesAt(lo, hi, steps)
+	counts := make([]int, len(edges)+1)
+	for _, value := range sorted {
+		// Compare against the edges rather than re-deriving a grid index from
+		// math.Log10, so the counts match the Edges the API publishes.
+		// j is the number of edges at or below value: 0 below the first edge,
+		// len(edges) at or above the last one.
+		j := sort.Search(len(edges), func(j int) bool { return edges[j] > value })
+		counts[j]++
+	}
+
+	dist := &SpeedDistribution{
+		StepsPerDecade:   steps,
+		Edges:            edges,
+		Counts:           counts,
+		Below:            counts[0],
+		Above:            counts[len(edges)],
+		Window:           SpeedWindow{Lo: edges[0], Hi: edges[len(edges)-1]},
+		Count:            len(sorted),
+		Min:              sorted[0],
+		Max:              sorted[len(sorted)-1],
+		MinTokens:        minTokens,
+		MaxRatePerSecond: MaxSpeedPerSecond,
+	}
+	for _, p := range []float64{50, 90, 95, 99} {
+		if !SpeedPercentileSupported(len(sorted), p) {
+			continue
+		}
+		value := percentile(sorted, p)
+		switch p {
+		case 50:
+			dist.P50 = &value
+		case 90:
+			dist.P90 = &value
+		case 95:
+			dist.P95 = &value
+		case 99:
+			dist.P99 = &value
+		}
+	}
+	return dist
+}
+
+// SpeedWindowFor returns the plotted range of sorted values.
+func SpeedWindowFor(sorted []float64) (float64, float64) {
+	if len(sorted) == 0 {
+		return 0, 0
+	}
+	if len(sorted) >= 200 {
+		return percentile(sorted, 0.5), percentile(sorted, 99.5)
+	}
+	return sorted[0], sorted[len(sorted)-1]
+}
+
+// UsableSpeed reports whether a reported rate describes throughput. tokCount is
+// the token count the rate applies to: prompt tokens for a prefill rate and
+// generated tokens for a generation rate.
+func UsableSpeed(rate float64, tokCount int, minTokens int) bool {
+	return rate > 0 && rate <= MaxSpeedPerSecond && tokCount >= minTokens
 }
