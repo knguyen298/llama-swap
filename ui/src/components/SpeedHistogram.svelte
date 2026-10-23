@@ -79,16 +79,23 @@
       dist.above > 0 ? { x: W - PAD.right - KINK_PAD - KINK_W, side: "above" as const } : null,
     ].filter((k): k is { x: number; side: "below" | "above" } => k !== null),
   );
-  let axisSegments = $derived.by(() => {
-    const segs: [number, number][] = [];
-    let cursor = PAD.left;
+  // The horizontal axis and both kinks are one continuous path. Separate lines
+  // and separate kink paths overlapped at the joints, and because every axis
+  // stroke is translucent the overlap printed a lighter dot where a kink met the
+  // axis. One path is painted once, so the joints are invisible.
+  let axisPath = $derived.by(() => {
+    const pts: [number, number][] = [[PAD.left, base]];
     for (const kink of kinks) {
-      segs.push([cursor, kink.x]);
-      cursor = kink.x + KINK_W;
+      const x0 = kink.x;
+      pts.push([x0, base]);
+      pts.push([x0 + Math.round(KINK_W * 0.28), base - KINK_AMP]);
+      pts.push([x0 + Math.round(KINK_W * 0.67), base + KINK_AMP]);
+      pts.push([x0 + KINK_W, base]);
     }
-    segs.push([cursor, W - PAD.right]);
-    return segs.filter(([from, to]) => to > from);
+    pts.push([W - PAD.right, base]);
+    return pts.map(([px, py], i) => `${i ? "L" : "M"} ${px} ${py}`).join(" ");
   });
+
   let plotLeft = $derived(PAD.left + KINK_PAD + KINK_W + (dist.below > 0 ? KINK_CLEAR : 0));
   let plotRight = $derived(W - PAD.right - KINK_PAD - KINK_W - (dist.above > 0 ? KINK_CLEAR : 0));
 
@@ -173,12 +180,10 @@
     aria-label={description}
   >
     <!-- axis line, with an inline kink at each end that clips a tail -->
-    {#each axisSegments as seg}
-      <line x1={seg[0]} y1={base} x2={seg[1]} y2={base} class="axis" />
-    {/each}
+    <path d={axisPath} class="axis axis-line" />
     {#each kinks as kink}
       {@const d = kinkPath(kink.x)}
-      <path {d} class="axis kink">
+      <path {d} class="kink">
         <title
           >{kink.side === "below"
             ? tailCaption(dist.below, dist.count, dist.edges[0], "below")
@@ -333,10 +338,14 @@
     stroke-opacity: 0.08;
     stroke-width: 1;
   }
+  .axis-line {
+    stroke-linejoin: round;
+  }
   .kink {
     fill: none;
+    stroke: transparent;
+    stroke-width: 8;
     stroke-linejoin: round;
-    stroke-linecap: round;
     pointer-events: stroke;
   }
   /* No :hover rule here on purpose. The kink is part of the axis, so it must not
