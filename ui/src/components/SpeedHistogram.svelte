@@ -41,11 +41,14 @@
   let { dist, samples, title, rule, unit, sampleLabel, colorClass }: Props = $props();
 
   const W = 560;
-  const H = 224;
-  // The top padding is a reserved two-line label row, above the top gridline.
-  const PAD = { top: 40, right: 12, bottom: 34, left: 48 };
-  const LABEL_Y = 15;
-  const LABEL_Y2 = 29;
+  // The shipped chart drew about 90 pixels of plot at this width. This keeps a
+  // little more than that, so the buckets stay readable, and drops the extra
+  // height the first version added.
+  const H = 176;
+  // The top padding is the reserved two-line label row, above the top gridline.
+  const PAD = { top: 34, right: 12, bottom: 32, left: 48 };
+  const LABEL_Y = 13;
+  const LABEL_Y2 = 26;
   const KINK_W = 14;
   const KINK_AMP = 6;
   const KINK_PAD = 4;
@@ -194,14 +197,6 @@
       <text x={tick.x} y={base + 12} text-anchor="middle">{tick.label}</text>
     {/each}
 
-    <!-- window bounds, only where a tail is clipped -->
-    {#if dist.below > 0}
-      <line x1={x.left} y1={PAD.top} x2={x.left} y2={base} class="axis" stroke-dasharray="2 3" />
-    {/if}
-    {#if dist.above > 0}
-      <line x1={x.right} y1={PAD.top} x2={x.right} y2={base} class="axis" stroke-dasharray="2 3" />
-    {/if}
-
     <!-- Percentile lines: always drawn, labelled only while the line itself is
          hovered. A wide invisible line makes each one easy to hit. This block is
          painted before the bars, so where a bar and a line overlap the bar wins
@@ -344,7 +339,7 @@
     stroke-linecap: round;
     pointer-events: stroke;
   }
-  .kink:hover {
-    stroke-opacity: 0.6;
-  }
+  /* No :hover rule here on purpose. The kink is part of the axis, so it must not
+     brighten and look like a control you can pick up. Its title still carries the
+     clipped count. */
 </style>
