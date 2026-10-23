@@ -1,5 +1,26 @@
 # Changelog
 
+## v266.1-combined (Oct 22, 2026)
+
+Fork build of upstream v266, one step ahead of v266-combined. The three merged
+branches are unchanged: `feat/ui-auth`, `fix/1218-prompt-cached-tokens` and
+`feat/activity-speed-histogram`.
+
+- the Activity speed charts, corrected after a look at real traffic. The axis
+  break no longer brightens on hover, the dotted vertical lines at the two ends
+  of the plotted window are gone, and the chart draws 176 units tall instead of
+  224, close to the height of the charts it replaces.
+- the horizontal axis and both axis breaks are now one path painted once.
+  Separate translucent strokes overlapped at the joints and printed a lighter
+  dot where a break met the axis.
+- `TokenHistogram.svelte` is deleted. `GET /api/metrics/stats` still returns the
+  equal-width bins, so an older web UI keeps working, and this web UI shows its
+  empty state against an older binary rather than carrying a second chart
+  renderer. The Activity chunk is 3.2 kB smaller.
+- Fork build note: `Publish Helm chart` now skips a `vNNN-combined` tag instead
+  of failing on it, because that job takes the chart version from a plain
+  `vNNN` tag.
+
 ## v266-combined (Oct 22, 2026)
 
 Fork build of upstream v266 with three branches merged: `feat/ui-auth`,
