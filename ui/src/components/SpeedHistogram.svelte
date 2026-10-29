@@ -332,6 +332,9 @@
     stroke: var(--foreground);
     stroke-opacity: 0.3;
     stroke-width: 1;
+    /* A path fills by default, and the axis is now one path that zigzags. Without
+       this the browser closes each zigzag and paints a filled triangle. */
+    fill: none;
   }
   .grid {
     stroke: var(--foreground);
