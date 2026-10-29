@@ -11,15 +11,19 @@ import {
   handleAPIEventMessage,
   hasListedModels,
   inFlightRequests,
+  inferencePaused,
   inflightRequestEntries,
   models,
+  pauseInference,
   playgroundModels,
   profileModels,
   profiles,
+  resumeInference,
   selectorModels,
   setActiveProfile,
   tailcatStatus,
   uiConfig,
+  helpAgentEnabled,
 } from "./api";
 
 afterEach(() => {
@@ -184,6 +188,15 @@ describe("api store event handling", () => {
       data: JSON.stringify({ activity: { session_id: ["X-Trace-ID"] } }),
     }));
     expect(get(uiConfig).activity.session_id).toEqual(["X-Trace-ID"]);
+    expect(get(helpAgentEnabled)).toBe(true);
+  });
+
+  it("hides Help when the config sets helpagent.disable", () => {
+    handleAPIEventMessage(JSON.stringify({
+      type: "uiConfig",
+      data: JSON.stringify({ activity: { session_id: [] }, helpagent: { disable: true } }),
+    }));
+    expect(get(helpAgentEnabled)).toBe(false);
   });
 
   it("increments activity revision for activity events", () => {
@@ -206,6 +219,39 @@ describe("api store event handling", () => {
       data: JSON.stringify({ active: "coding" }),
     }));
     expect(get(activeProfile)).toBe("coding");
+  });
+
+  it("applies pause change events", () => {
+    inferencePaused.set(false);
+    handleAPIEventMessage(JSON.stringify({
+      type: "pauseChanged",
+      data: JSON.stringify({ paused: true }),
+    }));
+    expect(get(inferencePaused)).toBe(true);
+    handleAPIEventMessage(JSON.stringify({
+      type: "pauseChanged",
+      data: JSON.stringify({ paused: false }),
+    }));
+    expect(get(inferencePaused)).toBe(false);
+  });
+
+  it("ignores a pause response that arrives after a newer resume", async () => {
+    let finishPause: (value: unknown) => void = () => {};
+    const mockFetch = vi.fn()
+      .mockReturnValueOnce(new Promise((resolve) => { finishPause = resolve; }))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ paused: false }) });
+    vi.stubGlobal("fetch", mockFetch);
+    inferencePaused.set(false);
+
+    const pausing = pauseInference();
+    // The pause event arrives while the pause request waits for models to stop.
+    handleAPIEventMessage(JSON.stringify({ type: "pauseChanged", data: JSON.stringify({ paused: true }) }));
+    await resumeInference();
+    expect(get(inferencePaused)).toBe(false);
+
+    finishPause({ ok: true, json: async () => ({ paused: true }) });
+    await pausing;
+    expect(get(inferencePaused)).toBe(false);
   });
 
   it("loads and switches profiles", async () => {

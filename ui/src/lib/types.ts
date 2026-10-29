@@ -11,6 +11,7 @@ export interface ModelCapabilities {
   image_to_image?: boolean;
   function_calling?: boolean;
   reranker?: boolean;
+  embeddings?: boolean;
 }
 
 // Input/output modalities a model reports through the /v1/models
@@ -142,6 +143,10 @@ export interface UIConfig {
   activity: {
     session_id: string[];
   };
+  /** helpagent.disable hides the Help page; the server then has no /api/mcp. */
+  helpagent?: {
+    disable: boolean;
+  };
 }
 
 export interface NetIOStat {
@@ -185,7 +190,7 @@ export interface PerformanceResponse {
 }
 
 export interface APIEventEnvelope {
-  type: "modelStatus" | "logData" | "activity" | "inflight" | "uiConfig" | "profileChanged" | "perfsys" | "perfgpu";
+  type: "modelStatus" | "logData" | "activity" | "inflight" | "uiConfig" | "profileChanged" | "pauseChanged" | "perfsys" | "perfgpu";
   data: string;
 }
 

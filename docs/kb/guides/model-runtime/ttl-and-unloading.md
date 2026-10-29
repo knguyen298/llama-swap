@@ -1,10 +1,10 @@
 ---
 title: Automatic model unloading with ttl
-summary: How ttl, globalTTL, unloadTimeout and Docker cmdStop interact, plus how to unload on demand.
+summary: How ttl, globalTTL, unloadTimeout and Docker cmdStop interact, plus how to unload on demand or pause inference.
 category: guides
-tags: [ttl, unload, vram, memory, idle, docker, container, cmd-stop]
+tags: [ttl, unload, vram, memory, idle, docker, container, cmd-stop, pause, resume, gaming]
 config_keys: [globalTTL, unloadTimeout, models.*.ttl, models.*.unloadTimeout, models.*.cmdStop]
-updated: 2026-08-25
+updated: 2026-10-27
 ---
 
 # Automatic model unloading with ttl
@@ -86,6 +86,26 @@ endpoint.
 The web UI calls the same handler at `/ui/api/models/unload`, which follows
 `auth.ui` (see `guides/api-integration/api-keys-and-auth`). The `/api/` path
 above always requires an API key.
+
+## Pausing inference
+
+An unload only lasts until the next request loads a model again. To keep the
+GPU free, for example while playing a game, pause inference:
+
+```console
+$ curl -X POST http://localhost:8080/api/models/pause    # unload all, reject requests
+$ curl -X POST http://localhost:8080/api/models/resume
+```
+
+The Models page has a Pause / Resume button that does the same, and a banner
+across the top of the web UI shows while inference is paused.
+
+While paused, every request for a local model (`/v1/...`, `/upstream/...`,
+`/comfyui/...`, `/audiocpp/...`) gets a `503` with the message
+`all inference is paused`, and startup preloading is skipped. Requests that
+are running when you pause are stopped with their model. Peer models are not
+affected. A config reload keeps the pause; restarting llama-swap clears it.
+
 
 ## Picking a value
 

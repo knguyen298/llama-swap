@@ -262,6 +262,12 @@ func TestServer_Doors_EveryRoute(t *testing.T) {
 	for _, p := range []string{"/v1/models", "/models", "/metrics", "/unload", "/running", "/api/version", "/api/profiles", "/api/hardware"} {
 		routes = append(routes, route{http.MethodGet, p})
 	}
+	// The UI's own action endpoints, including the pair upstream added in v267.
+	// POST /api/inflight/{id}/cancel is left out, an unknown id answers 404 and
+	// that is the handler speaking, not the door.
+	for _, p := range []string{"/api/models/unload", "/api/models/pause", "/api/models/resume"} {
+		routes = append(routes, route{http.MethodPost, p})
+	}
 	status := func(method, target, key string) int {
 		r := httptest.NewRequest(method, target, strings.NewReader(`{"model":"m1"}`))
 		r.Header.Set("Content-Type", "application/json")

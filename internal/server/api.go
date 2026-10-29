@@ -66,7 +66,7 @@ func renderCapabilities(caps config.ModelCapConfig) (arch map[string]any, capsMa
 	}
 
 	// Build capabilities map only if there's something to put in it.
-	if hasIn || hasOut || caps.Tools || caps.Reranker {
+	if hasIn || hasOut || caps.Tools || caps.Reranker || caps.Embeddings {
 		capsMap = make(map[string]any)
 	}
 
@@ -97,6 +97,10 @@ func renderCapabilities(caps config.ModelCapConfig) (arch map[string]any, capsMa
 
 	if caps.Reranker {
 		capsMap["reranker"] = true
+	}
+
+	if caps.Embeddings {
+		capsMap["embeddings"] = true
 	}
 
 	if caps.Context > 0 {
@@ -398,6 +402,10 @@ func (s *Server) startPreload() {
 				s.logs.ProxyLogs.Warnf("preload: model %s is not a local model, skipping", modelID)
 				continue
 			}
+			if s.pause.Paused() {
+				s.logs.ProxyLogs.Infof("preload: inference is paused, skipping model %s", modelID)
+				continue
+			}
 			s.logs.ProxyLogs.Infof("preloading model: %s", modelID)
 
 			req, err := http.NewRequestWithContext(s.shutdownCtx, http.MethodGet, "/", nil)
@@ -527,7 +535,7 @@ func (s *Server) handleUpstream(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case s.local.Handles(modelID):
-		s.local.ServeHTTP(w, r)
+		s.serveLocal(w, r)
 	case s.peer.Handles(modelID):
 		s.peer.ServeHTTP(w, r)
 	default:

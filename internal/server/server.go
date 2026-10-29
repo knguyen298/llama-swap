@@ -20,6 +20,7 @@ import (
 	"github.com/mostlygeek/llama-swap/internal/hw"
 	"github.com/mostlygeek/llama-swap/internal/logmon"
 	"github.com/mostlygeek/llama-swap/internal/mcptools"
+	"github.com/mostlygeek/llama-swap/internal/mcptools/sourcecode"
 	"github.com/mostlygeek/llama-swap/internal/perf"
 	"github.com/mostlygeek/llama-swap/internal/router"
 	"github.com/mostlygeek/llama-swap/internal/store"
@@ -68,6 +69,10 @@ type Server struct {
 
 	profileMu     sync.RWMutex
 	activeProfile string
+
+	// pause rejects requests for local models while inference is paused. It
+	// is shared across the Server instances a hot config reload creates.
+	pause *PauseState
 
 	local router.LocalRouter
 	peer  router.Router
@@ -207,11 +212,25 @@ type BuildInfo struct {
 	Date    string
 }
 
-func New(cfg config.Config, logs *logmon.Group, perfMon *perf.Monitor, st store.Store, build BuildInfo, hardware *hw.HardwareSnapshot, refs *docagent.Docs) (*Server, error) {
+// New constructs the selected local router, peer router, and HTTP handlers
+// using the supplied configuration and shared services.
+//
+// code serves llama-swap's own source over MCP. It is built once by the caller
+// and shared across reloads, so its checkout is fetched once per process; nil
+// leaves the code__* tools out.
+//
+// pause is shared across reloads too, so a reload keeps inference paused; nil
+// starts a fresh, unpaused state.
+func New(cfg config.Config, logs *logmon.Group, perfMon *perf.Monitor, st store.Store, build BuildInfo, hardware *hw.HardwareSnapshot, refs *docagent.Docs, code *sourcecode.Provider, pause *PauseState) (*Server, error) {
 	var local router.LocalRouter
 	var err error
 
 	switch cfg.Routing.Router.Use {
+	case "capacity":
+		local, err = router.NewCapacity(cfg, logs)
+		if err != nil {
+			return nil, fmt.Errorf("creating capacity router: %w", err)
+		}
 	case "matrix":
 		local, err = router.NewMatrix(cfg, logs)
 		if err != nil {
@@ -233,6 +252,11 @@ func New(cfg config.Config, logs *logmon.Group, perfMon *perf.Monitor, st store.
 		return nil, fmt.Errorf("store is required")
 	}
 
+	if pause == nil {
+		pause = NewPauseState()
+	}
+	local.SetStartGate(pause.startGate)
+
 	if cfg.Auth.UIMode() == config.UIAuthNone {
 		logs.ProxyLogs.Warnf("auth.ui is none: everything under /ui/ has no authentication; make sure a reverse proxy gates it")
 	}
@@ -249,6 +273,7 @@ func New(cfg config.Config, logs *logmon.Group, perfMon *perf.Monitor, st store.
 		hardware:      hardware,
 		reference:     refs,
 		activeProfile: cfg.Hooks.OnStartup.Profile,
+		pause:         pause,
 		local:         local,
 		peer:          peer,
 		shutdownCtx:   shutdownCtx,
@@ -259,11 +284,15 @@ func New(cfg config.Config, logs *logmon.Group, perfMon *perf.Monitor, st store.
 
 	// SysProvider is constructed here because this is where perf and hardware
 	// are in scope; wiring those in later is a change to internal/mcptools.
-	tools, err := mcptools.New(
+	providers := []mcptools.Provider{
 		docagent.NewDocsProvider(refs),
 		mcptools.NewSysProvider(nil),
 		config.NewConfigProvider(cfg),
-	)
+	}
+	if code != nil {
+		providers = append(providers, code)
+	}
+	tools, err := mcptools.New(providers...)
 	if err != nil {
 		return nil, fmt.Errorf("building the MCP tool registry: %w", err)
 	}
@@ -293,7 +322,7 @@ func (s *Server) localPeerHandler(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case s.local.Handles(data.ModelID):
 		s.logs.ProxyLogs.Debugf("dispatch: using local process for model: %s", data.ModelID)
-		s.local.ServeHTTP(w, r)
+		s.serveLocal(w, r)
 	case s.peer.Handles(data.ModelID):
 		s.logs.ProxyLogs.Debugf("dispatch: using peer for model: %s", data.ModelID)
 		s.peer.ServeHTTP(w, r)
@@ -419,6 +448,8 @@ func (s *Server) routes() {
 	// API group consumed by the UI.
 	inner.HandleFunc("POST /api/models/unload", s.handleAPIUnloadAll)
 	inner.HandleFunc("POST /api/models/unload/{model...}", s.handleAPIUnloadModel)
+	inner.HandleFunc("POST /api/models/pause", s.handleAPIPause)
+	inner.HandleFunc("POST /api/models/resume", s.handleAPIResume)
 	inner.HandleFunc("GET /api/profiles", s.handleAPIProfiles)
 	inner.HandleFunc("PUT /api/profiles/active", s.handleAPIActiveProfile)
 	inner.HandleFunc("POST /api/inflight/{id}/cancel", s.handleAPICancelInflight)
@@ -435,8 +466,11 @@ func (s *Server) routes() {
 	// Stateless MCP server exposing llama-swap's own documentation as tools,
 	// consumed by the Playground's agentic chat and by any external MCP client.
 	// Registered without a method so non-POST reaches the handler and gets a
-	// 405 with Allow, rather than the mux's bare 404.
-	inner.HandleFunc("/api/mcp", s.handleAPIMCP)
+	// 405 with Allow, rather than the mux's bare 404. helpagent.disable leaves
+	// the path unregistered, at both doors.
+	if !s.cfg.HelpAgent.Disable {
+		inner.HandleFunc("/api/mcp", s.handleAPIMCP)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", handleHealth)
@@ -475,7 +509,6 @@ func (s *Server) routes() {
 	mux.Handle(uiPrefix+"/", uiChain.Then(uiDoor(inner, http.HandlerFunc(s.handleUI))))
 	// The public door: every handler on inner.
 	mux.Handle("/", publicDoor(inner, apiChain))
-
 	s.mux = mux
 	s.handler = chain.New(CreateRequestLogMiddleware(s.logs.HttpLogs), CreateCORSMiddleware(s.cfg)).Then(mux)
 }

@@ -1,10 +1,10 @@
 ---
 title: Connecting an MCP client to llama-swap
-summary: Point any MCP client at /api/mcp to search and read llama-swap's documentation.
+summary: Point any MCP client at /api/mcp to search llama-swap's documentation and source code.
 category: guides
-tags: [mcp, tools, agent, api, integration]
-config_keys: [apiKeys, auth.ui]
-updated: 2026-09-04
+tags: [mcp, tools, agent, api, integration, source, code, help, disable]
+config_keys: [apiKeys, auth.ui, helpagent.disable]
+updated: 2026-10-23
 ---
 
 # Connecting an MCP client to llama-swap
@@ -54,6 +54,24 @@ The web UI reaches the same server at `/ui/api/mcp`, which follows `auth.ui`.
 With `ui: none` that path is open to whatever the reverse proxy lets through,
 so make sure that the proxy gates `/ui/`. `config__get_config` shows the
 running configuration.
+
+## Turning it off
+
+`helpagent.disable` turns off both the UI's Help page and this endpoint:
+
+```yaml
+helpagent:
+  disable: true
+```
+
+The Help item leaves the sidebar, `/help` in the UI goes to the home page, and
+`/api/mcp` answers `404`, so no MCP client can use these tools. It takes effect
+on a config reload. The default is `false`.
+
+Turn it off when nobody uses Help, or when this instance should not offer its
+configuration and source code tools at all. Protecting the endpoint with
+`apiKeys` is the alternative when Help should stay.
+
 
 ## The tools
 
@@ -112,9 +130,39 @@ is stopped while it is still building it.
 | --- | --- |
 | `sys__now` | current date and time, in UTC, server local time, and an optional named timezone |
 
-Every tool is annotated `readOnlyHint`, so clients that ask before running tools can
-safely auto-approve them. Only `sys__now` is *not* `idempotentHint` — the answer is
-supposed to change between calls.
+**`code__*` — llama-swap's source code**
+
+| tool | what it does |
+| --- | --- |
+| `code__grep` | regex search over the source, ripgrep style, returning `path:line: text` matches; narrow with a directory or file `path` such as `internal/config` and a `glob` such as `*.go` |
+| `code__read` | one file, lines numbered `L12:`, with a GitHub link to the same lines; `offset` and `limit` page through it |
+| `code__find` | file paths matching a glob such as `internal/**/*.go` |
+| `code__ls` | one directory's entries, directories marked with a trailing `/` |
+
+These let an agent check the documentation against the code that implements it.
+
+The source is the Go and TypeScript files, without tests, of the build itself,
+embedded in the binary. Release builds and the `make` build targets include it:
+`make src` copies the files into `internal/mcptools/sourcecode/_src` and the
+`embed_src` build tag embeds them. It adds about 1.7MB to the binary and takes no
+memory until a tool reads it. Nothing is downloaded, and git is not needed at
+run time. `code__read` links to the same lines on GitHub at the release tag
+(`v266` for llama-swap v266; `main` for a development build).
+
+What goes wrong:
+
+- **"source code is not embedded in this build".** The binary was built
+  without `-tags embed_src`, for example with a plain `go build` or
+  `go install`. Run `make src` and build with `-tags embed_src`, or use a
+  release build.
+- **The build fails with `pattern _src: no matching files found`.** The
+  `embed_src` tag was set without running `make src` first.
+- **A local build shows old code.** `_src` is a copy made when `make src` ran.
+  The `make` build targets run it each time; a manual `go build` does not.
+
+Every tool is annotated `readOnlyHint`, so clients that ask before running
+tools can safely auto-approve them. `sys__now` is not `idempotentHint` — its
+answer is supposed to change between calls.
 
 A good first request is `docs__list_docs` — it is the map of everything available.
 
@@ -175,6 +223,8 @@ Only protocol problems — an unknown method, a header mismatch, a malformed bod
 - Results are size-capped so they fit a local model's context window.
   `docs__get_doc` says so when it truncates and tells you the `offset` to continue
   from; `config__get_config` never truncates, it asks you for a narrower `query`.
+  A cut-off `code__*` result ends with a bracketed notice saying what was left out
+  and how to get it, such as `[Showing lines 1-200 of 387. Use offset=201 to continue.]`.
 
 ## Related
 

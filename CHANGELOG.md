@@ -1,6 +1,66 @@
 # Changelog
 
+## v268 (Oct 28, 2026)
+
+
+Many users run llama-swap on their gaming machines. The new Pause and Resume
+functionality unloads and pauses all inference, freeing up system resources for
+fun! Well llama-swap is fun too but you gotta be weird like me to prefer it
+over gaming.
+
+Also a small change to the CUDA 13 container to support Turing architectures,
+where the actual cut off is.
+
+- [PR #1272](https://github.com/mostlygeek/llama-swap/pull/1272) docker/unified: add compute capability 75 to cuda13 amd64 build: adds sm 75 to the default `CMAKE_CUDA_ARCHITECTURES` for the amd64 `unified-cuda13` image, because it only compiled for sm 80 and up so Turing GPUs (Quadro T1000, RTX 20xx, GTX 16xx), which CUDA 13 still supports, failed at runtime with "no kernel image is available for execution on the device"; arm64 is unchanged (#1239) by [@mostlygeek](https://github.com/mostlygeek)
+- [6c855da](https://github.com/mostlygeek/llama-swap/commit/6c855da82bf7adb235bdf2e4abe9278aea703973) README: add turing architecture notes: lists Turing GPUs (RTX 20xx, GTX 16xx, Quadro T-series) as supported by the `unified-cuda13` image by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1273](https://github.com/mostlygeek/llama-swap/pull/1273) server: add pause/resume inference: adds `/api/models/pause` and `/api/models/resume` endpoints and UI controls that unload all local models and reject new requests until resumed, so system resources can be freed while llama-swap keeps running (#1268) by [@mostlygeek](https://github.com/mostlygeek)
+
+## v267 (Oct 25, 2026)
+
+
+This is huge release with @JaredHatfield contributing a new capacity based router!
+
+Rather than defining which models fit with other models, the capacity router
+allows declaring pools of resources and how much of each resource a model needs.
+The new router will automatically evict models to free up enough capacity to
+load the new model. For use cases that have a big combinations of models
+that can run concurrently, the new router can eliminate a lot of manual
+configuration work.
+
+The other big feature is the Help Agent in the UI can now search llama-swap's
+source code as well as its knowledge base. Every release of llama-swap includes
+the source code it was built from (tests excluded). This is handy for answering
+questions about how llama-swap actually works and a knowledge base article
+does not exist. One step closer to the singularity!
+
+If you want to try out the new router ask the Help Agent to generate a configuration
+example using your existing configuration. Did you know, it can do that!? :)
+
+
+- [PR #1242](https://github.com/mostlygeek/llama-swap/pull/1242) router: add capacity-based model eviction: adds a capacity router where user-defined pools bound which models can be resident together and `evict_cost` picks what to unload when a model no longer fits, replacing the need to hand-maintain every valid combination in the matrix on systems with lots of unified memory (#1004) by [@JaredHatfield](https://github.com/JaredHatfield)
+- [PR #1258](https://github.com/mostlygeek/llama-swap/pull/1258) docs/kb: add guides/tools for the cmd/ programs: adds knowledge base articles for wol-proxy, fake-model and vllm-wrapper (and moves the kubeswap guide under `guides/tools`) so the Help chat can answer questions about the tools in the llama-swap ecosystem, plus a convention for keeping each tool's README and article in sync by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1259](https://github.com/mostlygeek/llama-swap/pull/1259) internal/mcptools: add code search to Help agent: gives the Docs agent `code__grep`, `code__read`, `code__find` and `code__ls` so it can verify knowledge base articles against the code that implements them, adds `helpagent.disable` to hide Help and stop serving `/api/mcp`, and raises the agent loop's max iterations from 16 to 96 so the extra tool calls do not end the answer early by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1265](https://github.com/mostlygeek/llama-swap/pull/1265) internal/mcptools: embed source for code tools instead of git: embeds the Go and TypeScript source (without tests) in the binary via the new `embed_src` build tag and reads it through `fs.FS`, because the runtime `git` checkout made the code tools fail on installs without the git command line tool; `code__status` and `code__update` are removed by [@mostlygeek](https://github.com/mostlygeek)
+
+## v266 (Oct 22, 2026)
+
+
+This release includes security dependency updates and requested quality of life changes from users:
+
+- the UI no longer expects to be run under a root path making it easier to serve llama-swap behind another proxy
+- the max request size is configurable now. Users should be free to OOM as much as they want. llama-swap ain't your mom!
+- allow manual override of values in /v1/audio/voices. This is a non-standard endpoint but makes working with upstream audio engines a bit nicer
+
+Details below:
+
+- [PR #1224](https://github.com/mostlygeek/llama-swap/pull/1224) cmd/kubeswap: attach DRA ResourceClaims and mount NFS volumes: add repeatable `--resource-claim` and NFS `--volume` support so Kubernetes backends can share a DRA GPU claim and mount models without a static PV and PVC for each export (#1222) by [@gabrielcosi](https://github.com/gabrielcosi)
+- [PR #1225](https://github.com/mostlygeek/llama-swap/pull/1225) Add voices override for speech models: let local models configure `capabilities.voices` so `/v1/audio/voices` returns a reliable list without starting the model or querying the upstream server (#1207) by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1228](https://github.com/mostlygeek/llama-swap/pull/1228) ui,server: serve the UI under a reverse proxy base path: use relative asset, API and redirect paths so the UI works behind a prefix-stripping reverse proxy without routing its endpoints at the proxy root (#1227) by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1249](https://github.com/mostlygeek/llama-swap/pull/1249) internal/server: make the request body size limit configurable: add `maxRequestBodyMB` for model endpoints and Tailcat, replacing the fixed 250 MB cap while retaining 250 MB as the default (#1245) by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1257](https://github.com/mostlygeek/llama-swap/pull/1257) AGENTS.md, go.mod: use go 1.27.3, trim AGENT rules: raise the Go version to 1.27.3, update dependencies and simplify contributor instructions by [@mostlygeek](https://github.com/mostlygeek)
+
 ## v266.1-combined (Oct 22, 2026)
+
 
 Fork build of upstream v266, one step ahead of v266-combined. The three merged
 branches are unchanged: `feat/ui-auth`, `fix/1218-prompt-cached-tokens` and
@@ -22,6 +82,7 @@ branches are unchanged: `feat/ui-auth`, `fix/1218-prompt-cached-tokens` and
   `vNNN` tag.
 
 ## v266-combined (Oct 22, 2026)
+
 
 Fork build of upstream v266 with three branches merged: `feat/ui-auth`,
 `fix/1218-prompt-cached-tokens` and `feat/activity-speed-histogram`. The first
@@ -53,37 +114,8 @@ two are described under v265-combined and are unchanged here.
   publishes no Homebrew tap, and the absent `TAP_REPO_PAT` secret made every
   fork release report a failed run.
 
-## v266 (Oct 22, 2026)
-
-
-This release includes security dependency updates and requested quality of life changes from users:
-
-- the UI no longer expects to be run under a root path making it easier to serve llama-swap behind another proxy
-- the max request size is configurable now. Users should be free to OOM as much as they want. llama-swap ain't your mom!
-- allow manual override of values in /v1/audio/voices. This is a non-standard endpoint but makes working with upstream audio engines a bit nicer
-
-Details below:
-
-- [PR #1224](https://github.com/mostlygeek/llama-swap/pull/1224) cmd/kubeswap: attach DRA ResourceClaims and mount NFS volumes: add repeatable `--resource-claim` and NFS `--volume` support so Kubernetes backends can share a DRA GPU claim and mount models without a static PV and PVC for each export (#1222) by [@gabrielcosi](https://github.com/gabrielcosi)
-- [PR #1225](https://github.com/mostlygeek/llama-swap/pull/1225) Add voices override for speech models: let local models configure `capabilities.voices` so `/v1/audio/voices` returns a reliable list without starting the model or querying the upstream server (#1207) by [@mostlygeek](https://github.com/mostlygeek)
-- [PR #1228](https://github.com/mostlygeek/llama-swap/pull/1228) ui,server: serve the UI under a reverse proxy base path: use relative asset, API and redirect paths so the UI works behind a prefix-stripping reverse proxy without routing its endpoints at the proxy root (#1227) by [@mostlygeek](https://github.com/mostlygeek)
-- [PR #1249](https://github.com/mostlygeek/llama-swap/pull/1249) internal/server: make the request body size limit configurable: add `maxRequestBodyMB` for model endpoints and Tailcat, replacing the fixed 250 MB cap while retaining 250 MB as the default (#1245) by [@mostlygeek](https://github.com/mostlygeek)
-- [PR #1257](https://github.com/mostlygeek/llama-swap/pull/1257) AGENTS.md, go.mod: use go 1.27.3, trim AGENT rules: raise the Go version to 1.27.3, update dependencies and simplify contributor instructions by [@mostlygeek](https://github.com/mostlygeek)
-
-## v265 (Oct 14, 2026)
-
-
-A couple of small improvements:
-
-- support serving llama-swap behind a path on a reverse proxy. Helpful if you want to front llama-swap with nginx and serve it under a specific path.
-- add support for manually defining voices for text to speech models
-- a small kubeswap update
-
-- [PR #1228](https://github.com/mostlygeek/llama-swap/pull/1228) ui,server: serve the UI under a reverse proxy base path: makes the browser side base-path agnostic (relative asset, redirect, favicon and PWA URLs plus an `apiUrl()` helper that re-attaches a stripped prefix) so llama-swap works behind a plain prefix-stripping proxy at `https://host/subpath/llama-swap/` without routing `/ui`, `/api` and `/v1` at the proxy root; includes an nginx and Caddy guide (#1227) by [@mostlygeek](https://github.com/mostlygeek)
-- [PR #1225](https://github.com/mostlygeek/llama-swap/pull/1225) Add voices override for speech models: adds a `models.capabilities.voices` capability listing the voice ids an upstream server supports, because the non-standard `GET /v1/audio/voices` endpoint returns unreliable responses; falls back to probing that endpoint on a best-effort basis when the list is not set (#1207) by [@mostlygeek](https://github.com/mostlygeek)
-- [PR #1224](https://github.com/mostlygeek/llama-swap/pull/1224) cmd/kubeswap: attach DRA ResourceClaims and mount NFS volumes: adds a repeatable `--resource-claim name=claim` flag so backends can get GPUs via the NVIDIA DRA driver (kubeswap only references the claim, pods sharing a claim share its device) and an `nfs:server/export:path[:ro]` kind for `--volume` so models can be mounted from NFS without a static PV/PVC per export (#1222) by [@gabrielcosi](https://github.com/gabrielcosi)
-
 ## v265-combined (Oct 14, 2026)
+
 
 
 Fork build of upstream v265 with two branches merged: `feat/ui-auth` and
@@ -116,6 +148,7 @@ Fork build of upstream v265 with two branches merged: `feat/ui-auth` and
 ## v264-combined (Oct 13, 2026)
 
 
+
 Fork build of upstream v264 with one feature branch merged.
 
 - feat/ui-auth: a new `auth.ui` setting. The default, `apiKeys`, keeps the
@@ -129,6 +162,19 @@ Fork build of upstream v264 with one feature branch merged.
 - Fork build note: `release.yml` drops the `trigger-tap-update` job. This fork
   publishes no Homebrew tap, and the absent `TAP_REPO_PAT` secret made every
   fork release report a failed run.
+
+## v265 (Oct 14, 2026)
+
+
+A couple of small improvements:
+
+- support serving llama-swap behind a path on a reverse proxy. Helpful if you want to front llama-swap with nginx and serve it under a specific path.
+- add support for manually defining voices for text to speech models
+- a small kubeswap update
+
+- [PR #1228](https://github.com/mostlygeek/llama-swap/pull/1228) ui,server: serve the UI under a reverse proxy base path: makes the browser side base-path agnostic (relative asset, redirect, favicon and PWA URLs plus an `apiUrl()` helper that re-attaches a stripped prefix) so llama-swap works behind a plain prefix-stripping proxy at `https://host/subpath/llama-swap/` without routing `/ui`, `/api` and `/v1` at the proxy root; includes an nginx and Caddy guide (#1227) by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1225](https://github.com/mostlygeek/llama-swap/pull/1225) Add voices override for speech models: adds a `models.capabilities.voices` capability listing the voice ids an upstream server supports, because the non-standard `GET /v1/audio/voices` endpoint returns unreliable responses; falls back to probing that endpoint on a best-effort basis when the list is not set (#1207) by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1224](https://github.com/mostlygeek/llama-swap/pull/1224) cmd/kubeswap: attach DRA ResourceClaims and mount NFS volumes: adds a repeatable `--resource-claim name=claim` flag so backends can get GPUs via the NVIDIA DRA driver (kubeswap only references the claim, pods sharing a claim share its device) and an `nfs:server/export:path[:ro]` kind for `--volume` so models can be mounted from NFS without a static PV/PVC per export (#1222) by [@gabrielcosi](https://github.com/gabrielcosi)
 
 ## v264 (Oct 12, 2026)
 

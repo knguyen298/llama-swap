@@ -48,6 +48,8 @@ Built in Go for performance and simplicity, llama-swap has zero dependencies and
   - `/running` - list currently running models ([#61](https://github.com/mostlygeek/llama-swap/issues/61))
   - `POST /api/models/unload` - manually unload all running models ([#58](https://github.com/mostlygeek/llama-swap/issues/58))
   - `POST /api/models/unload/:model_id` - unload a specific model
+  - `POST /api/models/pause` - unload all models and reject inference requests until resumed ([#1268](https://github.com/mostlygeek/llama-swap/issues/1268))
+  - `POST /api/models/resume` - accept inference requests again
   - `GET /api/profiles` - list configured profiles and the active selection
   - `PUT /api/profiles/active` - activate a profile or select none
   - `/logs` - remote log monitoring
@@ -117,7 +119,7 @@ There are three unified images. Pick the one that matches your GPU:
 
 | tag | platforms | GPUs |
 | --- | --- | --- |
-| `unified-cuda13` | amd64, arm64 | NVIDIA Ampere through Blackwell: A100, RTX 30xx/40xx/50xx, H100, RTX PRO, and GB10 on DGX Spark. Built with CUDA 13. |
+| `unified-cuda13` | amd64, arm64 | NVIDIA Turing through Blackwell: RTX 20xx, GTX 16xx, Quadro T-series, A100, RTX 30xx/40xx/50xx, H100, RTX PRO, and GB10 on DGX Spark. Built with CUDA 13. |
 | `unified-cuda` | amd64 | NVIDIA Pascal through Ada: P40, P100, GTX 10xx, RTX 20xx/30xx/40xx. Built with CUDA 12, for cards CUDA 13 dropped. |
 | `unified-vulkan` | amd64 | AMD and other Vulkan capable GPUs. |
 

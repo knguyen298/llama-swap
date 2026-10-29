@@ -91,6 +91,15 @@ performance:
   # - minimum duration 5s
   every: 15s
 
+# helpagent: the UI's Help page, a chat that answers questions about llama-swap
+# from its documentation, configuration and source code
+helpagent:
+  # disable: boolean
+  # - optional, default: false
+  # - true hides Help in the UI and does not serve the /api/mcp endpoint
+  #   whose tools the Help page uses
+  disable: false
+
 # startPort: sets the starting port number for the automatic ${PORT} macro.
 # - optional, default: 5800
 # - the ${PORT} macro can be used in model.cmd and model.proxy settings
@@ -376,6 +385,18 @@ models:
       --model path/to/gpt-oss-120B.gguf
       --ctx-size ${default_ctx}
       --temperature ${temp}
+
+    # capacities: resource requirements for use: capacity
+    # - optional, default: empty dictionary (no declared usage)
+    # - keys name routing.router.settings.capacity.pools; omitted pools use zero
+    # - values: nonnegative integers in the corresponding pool's unit
+    # capacities:
+    #   ram: 18000
+    #   gpu0: 12000
+
+    # evict_cost: manual eviction preference for the capacity router
+    # - optional, default: 0; nonnegative integer; higher favors keeping resident
+    # evict_cost: 10
 
     # name: a display name for the model
     # - optional, default: empty string
@@ -666,7 +687,7 @@ hooks:
 
 # routing:
 # Controls how llama-swap decides which models can run at the same time and
-# which get swapped out. Choose one of two swap engines:
+# which get swapped out. Choose one of three swap engines:
 #
 # - group:  the default engine. Simpler to configure. You define groups of
 #           models that run together, and loading one group typically unloads
@@ -677,16 +698,34 @@ hooks:
 #           model combinations are allowed to run concurrently, enabling
 #           setups that groups cannot express.
 #
+# - capacity: declare resource pools and each local model's requirements.
+#             Any combination that fits every pool's limit may coexist.
+#
 # The routing section is optional.
 routing:
   router:
     # use: a string defining which engine to use
     # - optional, default: "group"
-    # - valid values: group, matrix
+    # - valid values: group, matrix, capacity
     use: group
 
     # settings: a dictionary of settings for the specific engines
     settings:
+      # capacity: independent resource limits (no automatic measurement)
+      # - used when routing.router.use is capacity; other settings may remain
+      # - cannot combine with legacy top-level groups/matrix either
+      # - pools: dictionary of names to positive integer limits
+      # - units are operator-chosen per pool, matching models.*.capacities
+      # - unknown pools, requirements exceeding a limit, and invalid values fail
+      # - minimizes summed evict_cost, then eviction count, then sorted IDs;
+      #   a bounded search may return a feasible nonoptimal plan
+      # - only resident models are searched; only the requested model is started
+      # capacity:
+      #   pools:
+      #     ram: 128000
+      #     gpu0: 24000
+      #     gpu1: 24000
+
       # groups: a dictionary of named groups
       # - optional, default: empty dictionary
       # - lets you keep some models loaded while others swap out

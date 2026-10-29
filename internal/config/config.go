@@ -156,6 +156,12 @@ type UIActivityConfig struct {
 	SessionID []string `yaml:"session_id" json:"session_id"`
 }
 
+// HelpAgentConfig controls the UI's Help page and the /api/mcp endpoint that
+// serves its tools.
+type HelpAgentConfig struct {
+	Disable bool `yaml:"disable" json:"disable"`
+}
+
 // ProfileConfig describes a runtime-selectable set of model ID rewrites.
 // Empty pin targets disable the corresponding model ID while the profile is
 // active. YAML null values decode to the same empty string representation.
@@ -191,6 +197,7 @@ type Config struct {
 	Store              *Store            `yaml:"store"`
 	UI                 UIConfig          `yaml:"ui"`
 	Performance        PerformanceConfig `yaml:"performance"`
+	HelpAgent          HelpAgentConfig   `yaml:"helpagent"`
 	GlobalTTL          int               `yaml:"globalTTL"`
 	UnloadTimeout      int               `yaml:"unloadTimeout"`
 
@@ -296,13 +303,14 @@ type FifoConfig struct {
 }
 
 type RouterConfig struct {
-	Use      string         `yaml:"use"` // "group" (default) | "matrix"
+	Use      string         `yaml:"use"` // "group" (default) | "matrix" | "capacity"
 	Settings RouterSettings `yaml:"settings"`
 }
 
 type RouterSettings struct {
-	Groups map[string]GroupConfig `yaml:"groups"`
-	Matrix *MatrixConfig          `yaml:"matrix"`
+	Groups   map[string]GroupConfig `yaml:"groups"`
+	Matrix   *MatrixConfig          `yaml:"matrix"`
+	Capacity *CapacityConfig        `yaml:"capacity"`
 }
 
 func (c *Config) RealModelName(search string) (string, bool) {
