@@ -4,7 +4,7 @@ summary: Use logs, metrics, captures and the Activity view to diagnose requests 
 category: guides
 tags: [operations, logs, metrics, activity, captures, stdout, http]
 config_keys: [logLevel, logToStdout, metricsMaxInMemory, captureBuffer]
-updated: 2026-10-22
+updated: 2026-10-23
 ---
 
 # Observability, storage and Activity
