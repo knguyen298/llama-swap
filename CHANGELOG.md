@@ -1,6 +1,53 @@
 # Changelog
 
+## v269 (Oct 31, 2026)
+
+
+Happy Halloween!
+
+Lots of small and big treats in this release.
+
+- captures can now be persisted to disk and not lost on restart.
+- the metrics capture backend has been refactored to make it easy
+  to add support for new inference servers.
+- the UI can show models sorted by categories, great if you have
+  many different types configured!  
+- metrics can be exported as a PNG to make sharing easier.
+- add support for the embedding model capability
+- small bug and UI improvements
+
+Details below:
+
+- [PR #1274](https://github.com/mostlygeek/llama-swap/pull/1274) go.mod,ui/package-lock.json: dependency updates: picks up security updates for node and moves `shirou/gopsutil` back to the main upstream repository by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1275](https://github.com/mostlygeek/llama-swap/pull/1275) feat(config): add embeddings capability flag: adds `capabilities.embeddings`, mirroring the existing `reranker` flag and rendered into the `/v1/models` capabilities map, because capability discovery reads llama-server `/props` which reports nothing about embeddings, so a probed embed model surfaced as plain text->text and clients and the UI could only pick them out by name prefix by [@noctrex](https://github.com/noctrex)
+- [PR #1276](https://github.com/mostlygeek/llama-swap/pull/1276) feat(ui): group Models list into capability-derived class sections: derives each model's class (Chat, Image, Video, Audio, Embeddings, Rerank) client-side from the capability flags and modality lists `/v1/models` already carries and renders one collapsible section per class with a status dot that aggregates its rows, because a long flat list is hard to scan once many models are configured; `/api/events` modelStatus now includes `modalities: {in, out}` from the same `renderCapabilities` call so the dashboard and the OpenAI listing cannot disagree by [@noctrex](https://github.com/noctrex)
+- [PR #1279](https://github.com/mostlygeek/llama-swap/pull/1279) ui: move Models display options into a dropdown menu: moves the Categories and Show unlisted models switches into a "Display options" menu pinned to the right of the Models header (with the unlisted count shown in the item) and drops `flex-wrap`, because the header added in #1276 wrapped onto extra rows and made the page too tall; mobile layout improved too by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1280](https://github.com/mostlygeek/llama-swap/pull/1280) Makefile: add native target for the host platform: makes `native` the default target so a bare `make` builds for the platform you are on instead of cross-compiling everything, and fixes `make all` to actually cover Windows and FreeBSD, with `$(LDFLAGS)` factored out and shared by every platform target by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1282](https://github.com/mostlygeek/llama-swap/pull/1282) internal/capcompat: detect context length from yamz servers: reads `max_context` from `/v1/models` (tried after `context_length`) so yamz (kyojin) servers report their context length through the default prober by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1285](https://github.com/mostlygeek/llama-swap/pull/1285) ui: export the activity table as a client-side PNG image: rasterizes the visible table in the browser with html-to-image (SVG foreignObject -> canvas) and adds Markdown / Screenshot tabs to the export dialog with clipboard copy, download and a background resolved from the nearest opaque ancestor, so exporting works without a new backend endpoint; Meta and Capture columns are excluded from the render (#1284) by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1287](https://github.com/mostlygeek/llama-swap/pull/1287) ui: make markdown code highlighting theme aware in light mode: drives highlight.js token colors from `--hljs-*` custom properties (with a per-theme `--link` color and a lighter `--muted` for Midnight Commander) instead of one globally imported dark-only stylesheet, because code was measured at 1.12-1.40:1 contrast and was effectively invisible in all 11 light themes; light-mode code contrast is now 10.76-13.35:1 with dark mode unchanged by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1290](https://github.com/mostlygeek/llama-swap/pull/1290) internal/capcompat: read /props fields with gjson: extracts each `/props` field individually with gjson, so one unexpected field no longer takes the whole probe down, because llama-server b12017 added a list to `chat_template_caps` alongside its booleans which broke the whole-body unmarshal and made capability discovery fail against those builds; bad fields now log a WARN and read as their zero value (#1281) by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1292](https://github.com/mostlygeek/llama-swap/pull/1292) Extract usage parsing into pluggable upstream-specific handlers: splits usage extraction into per-upstream extractors (llama-server, vLLM, Anthropic, OpenAI, TabbyAPI, oMLX and an "auto" fallback that reads every known format) fed by the new `internal/hint` package which carries upstream and task information through the request context, and records task type, route, peer and reasoning tokens in the activity log, so token counts and performance metrics are accurate per upstream instead of assuming one format by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1293](https://github.com/mostlygeek/llama-swap/pull/1293) ui: fix the Model page Logs panel scrolling the whole page: gives the page its own scroll container and a minimum height for the Activity/Logs tabs, so a long log scrolls inside the panel instead of pushing the whole page by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1294](https://github.com/mostlygeek/llama-swap/pull/1294) Store request/response captures in separate SQLite database: moves captures out of the in-memory `internal/cache` into a capture repository backed by its own SQLite database (new `store.persistCaptures`, `captureBuffer` unchanged), so captures can persist across restarts without fragmenting the metrics db, are pruned asynchronously by compressed size and are addressed by a `yymmddhh-xxxx` capture id that activity rows link to; `internal/cache` is removed (#1115) by [@mostlygeek](https://github.com/mostlygeek)
+
+## v268 (Oct 28, 2026)
+
+
+Many users run llama-swap on their gaming machines. The new Pause and Resume
+functionality unloads and pauses all inference, freeing up system resources for
+fun! Well llama-swap is fun too but you gotta be weird like me to prefer it
+over gaming.
+
+Also a small change to the CUDA 13 container to support Turing architectures,
+where the actual cut off is.
+
+- [PR #1272](https://github.com/mostlygeek/llama-swap/pull/1272) docker/unified: add compute capability 75 to cuda13 amd64 build: adds sm 75 to the default `CMAKE_CUDA_ARCHITECTURES` for the amd64 `unified-cuda13` image, because it only compiled for sm 80 and up so Turing GPUs (Quadro T1000, RTX 20xx, GTX 16xx), which CUDA 13 still supports, failed at runtime with "no kernel image is available for execution on the device"; arm64 is unchanged (#1239) by [@mostlygeek](https://github.com/mostlygeek)
+- [6c855da](https://github.com/mostlygeek/llama-swap/commit/6c855da82bf7adb235bdf2e4abe9278aea703973) README: add turing architecture notes: lists Turing GPUs (RTX 20xx, GTX 16xx, Quadro T-series) as supported by the `unified-cuda13` image by [@mostlygeek](https://github.com/mostlygeek)
+- [PR #1273](https://github.com/mostlygeek/llama-swap/pull/1273) server: add pause/resume inference: adds `/api/models/pause` and `/api/models/resume` endpoints and UI controls that unload all local models and reject new requests until resumed, so system resources can be freed while llama-swap keeps running (#1268) by [@mostlygeek](https://github.com/mostlygeek)
+
 ## v268-combined (Oct 29, 2026)
+
 
 Fork build of upstream v268 with three branches merged: `feat/ui-auth`,
 `fix/1218-prompt-cached-tokens` and `feat/activity-speed-histogram`. It moves
@@ -26,20 +73,113 @@ Models page, and `helpagent.disable`.
   `vNNN-combined` tag instead of failing on it, because that job takes the chart
   version from a plain `vNNN` tag
 
-## v268 (Oct 28, 2026)
+## v266.1-combined (Oct 22, 2026)
 
 
-Many users run llama-swap on their gaming machines. The new Pause and Resume
-functionality unloads and pauses all inference, freeing up system resources for
-fun! Well llama-swap is fun too but you gotta be weird like me to prefer it
-over gaming.
 
-Also a small change to the CUDA 13 container to support Turing architectures,
-where the actual cut off is.
+Fork build of upstream v266, one step ahead of v266-combined. The three merged
+branches are unchanged: `feat/ui-auth`, `fix/1218-prompt-cached-tokens` and
+`feat/activity-speed-histogram`.
 
-- [PR #1272](https://github.com/mostlygeek/llama-swap/pull/1272) docker/unified: add compute capability 75 to cuda13 amd64 build: adds sm 75 to the default `CMAKE_CUDA_ARCHITECTURES` for the amd64 `unified-cuda13` image, because it only compiled for sm 80 and up so Turing GPUs (Quadro T1000, RTX 20xx, GTX 16xx), which CUDA 13 still supports, failed at runtime with "no kernel image is available for execution on the device"; arm64 is unchanged (#1239) by [@mostlygeek](https://github.com/mostlygeek)
-- [6c855da](https://github.com/mostlygeek/llama-swap/commit/6c855da82bf7adb235bdf2e4abe9278aea703973) README: add turing architecture notes: lists Turing GPUs (RTX 20xx, GTX 16xx, Quadro T-series) as supported by the `unified-cuda13` image by [@mostlygeek](https://github.com/mostlygeek)
-- [PR #1273](https://github.com/mostlygeek/llama-swap/pull/1273) server: add pause/resume inference: adds `/api/models/pause` and `/api/models/resume` endpoints and UI controls that unload all local models and reject new requests until resumed, so system resources can be freed while llama-swap keeps running (#1268) by [@mostlygeek](https://github.com/mostlygeek)
+- the Activity speed charts, corrected after a look at real traffic. The axis
+  break no longer brightens on hover, the dotted vertical lines at the two ends
+  of the plotted window are gone, and the chart draws 176 units tall instead of
+  224, close to the height of the charts it replaces.
+- the horizontal axis and both axis breaks are now one path painted once.
+  Separate translucent strokes overlapped at the joints and printed a lighter
+  dot where a break met the axis.
+- `TokenHistogram.svelte` is deleted. `GET /api/metrics/stats` still returns the
+  equal-width bins, so an older web UI keeps working, and this web UI shows its
+  empty state against an older binary rather than carrying a second chart
+  renderer. The Activity chunk is 3.2 kB smaller.
+- Fork build note: `Publish Helm chart` now skips a `vNNN-combined` tag instead
+  of failing on it, because that job takes the chart version from a plain
+  `vNNN` tag.
+
+## v266-combined (Oct 22, 2026)
+
+
+
+Fork build of upstream v266 with three branches merged: `feat/ui-auth`,
+`fix/1218-prompt-cached-tokens` and `feat/activity-speed-histogram`. The first
+two are described under v265-combined and are unchanged here.
+
+- feat/activity-speed-histogram: the Activity view plots prompt speed and
+  generation speed as a distribution on a log axis. The equal-width bins it
+  replaces put 24,431 of 24,434 generation samples in one bar, because three
+  one-token completions reported 1,000,000 tokens per second and stretched the
+  axis over six decades.
+- Each chart buckets rates on a geometric grid whose resolution adapts to the
+  plotted window, from 3 to 192 buckets per decade on a nested ladder, aiming at
+  16 bars and at least four requests per bar. One bar therefore covers the same
+  multiplicative range everywhere on the axis, and each chart states that range.
+- The plot runs from the 0.5th to the 99.5th percentile and draws a kink on the
+  axis where it clips a tail. Hover the kink for the count outside the window.
+- Rates that cannot describe throughput are dropped as the chart reads them:
+  prefill under 32 prompt tokens, decode under 2 generated tokens, and any rate
+  above 100,000 per second. Each chart states how many requests reported a rate,
+  how many were dropped and how many reported no timing at all, so a pooled
+  chart never implies it covers every request.
+- A percentile line appears only when at least five samples sit beyond it, so a
+  model fleet of 24 requests shows p50 and refuses p99.
+- No stored row changes meaning and the database needs no migration. The
+  `prompt_histogram` and `gen_histogram` fields of `GET /api/metrics/stats` keep
+  the old bins, and the speed distributions arrive in new fields, so an old web
+  UI works against this binary and a new web UI falls back against an old one.
+- Fork build note: `release.yml` drops the `trigger-tap-update` job. This fork
+  publishes no Homebrew tap, and the absent `TAP_REPO_PAT` secret made every
+  fork release report a failed run.
+
+## v265-combined (Oct 14, 2026)
+
+
+
+
+Fork build of upstream v265 with two branches merged: `feat/ui-auth` and
+`fix/1218-prompt-cached-tokens`.
+
+- feat/ui-auth: a new `auth.ui` setting. The default, `apiKeys`, keeps the
+  upstream behavior. With `none`, everything under `/ui/` has no
+  authentication, so a reverse proxy must gate it. Every other path still
+  requires an API key. The web UI sends every request through `/ui/` and holds
+  no key.
+- `auth.ui` and the base path support shipped in v265 share one URL layer:
+  `apiUrl()` adds the `/ui` door after it re-attaches a stripped proxy prefix.
+  Outside the browser the path is unchanged, so the docs-agent CLI keeps using
+  the public door and its API key.
+- `GET /logs` and `GET /upstream` stay on the public path. Their HTML redirect
+  target is relative to that path, so serving them through the door produced
+  `/ui/ui/`.
+- fix/1218-prompt-cached-tokens: the Activity page's `Prompt` column now means
+  the same thing for every backend. OpenAI-style `prompt_tokens` (vLLM) and
+  Responses API `input_tokens` include the cached prefix that `Cached` already
+  reports, so llama-swap subtracts it when it writes the row, to match
+  llama.cpp's `timings.prompt_n`. `Prefill` divides that count once, because
+  `buildMetrics` no longer subtracts the cached tokens itself. Anthropic-style
+  `input_tokens` already excludes `cache_read_input_tokens`, so it is left
+  alone. Activity rows written by earlier builds keep the old meaning.
+- Fork build note: `release.yml` drops the `trigger-tap-update` job. This fork
+  publishes no Homebrew tap, and the absent `TAP_REPO_PAT` secret made every
+  fork release report a failed run.
+
+## v264-combined (Oct 13, 2026)
+
+
+
+
+Fork build of upstream v264 with one feature branch merged.
+
+- feat/ui-auth: a new `auth.ui` setting. The default, `apiKeys`, keeps the
+  upstream behavior. With `none`, everything under `/ui/` has no
+  authentication, so a reverse proxy must gate it. Every other path still
+  requires an API key. The web UI sends every request through `/ui/` and holds
+  no key. The audio.cpp passthrough added in v264 sits behind the same door, so
+  `/ui/audiocpp/` keeps working with `auth.ui: none`.
+- Upstream v264 adds `models.capabilities.voices`, kubeswap DRA ResourceClaims
+  with NFS volumes, and a Wake-on-LAN confirmation UI.
+- Fork build note: `release.yml` drops the `trigger-tap-update` job. This fork
+  publishes no Homebrew tap, and the absent `TAP_REPO_PAT` secret made every
+  fork release report a failed run.
 
 ## v267 (Oct 25, 2026)
 
@@ -84,110 +224,6 @@ Details below:
 - [PR #1228](https://github.com/mostlygeek/llama-swap/pull/1228) ui,server: serve the UI under a reverse proxy base path: use relative asset, API and redirect paths so the UI works behind a prefix-stripping reverse proxy without routing its endpoints at the proxy root (#1227) by [@mostlygeek](https://github.com/mostlygeek)
 - [PR #1249](https://github.com/mostlygeek/llama-swap/pull/1249) internal/server: make the request body size limit configurable: add `maxRequestBodyMB` for model endpoints and Tailcat, replacing the fixed 250 MB cap while retaining 250 MB as the default (#1245) by [@mostlygeek](https://github.com/mostlygeek)
 - [PR #1257](https://github.com/mostlygeek/llama-swap/pull/1257) AGENTS.md, go.mod: use go 1.27.3, trim AGENT rules: raise the Go version to 1.27.3, update dependencies and simplify contributor instructions by [@mostlygeek](https://github.com/mostlygeek)
-
-## v266.1-combined (Oct 22, 2026)
-
-
-Fork build of upstream v266, one step ahead of v266-combined. The three merged
-branches are unchanged: `feat/ui-auth`, `fix/1218-prompt-cached-tokens` and
-`feat/activity-speed-histogram`.
-
-- the Activity speed charts, corrected after a look at real traffic. The axis
-  break no longer brightens on hover, the dotted vertical lines at the two ends
-  of the plotted window are gone, and the chart draws 176 units tall instead of
-  224, close to the height of the charts it replaces.
-- the horizontal axis and both axis breaks are now one path painted once.
-  Separate translucent strokes overlapped at the joints and printed a lighter
-  dot where a break met the axis.
-- `TokenHistogram.svelte` is deleted. `GET /api/metrics/stats` still returns the
-  equal-width bins, so an older web UI keeps working, and this web UI shows its
-  empty state against an older binary rather than carrying a second chart
-  renderer. The Activity chunk is 3.2 kB smaller.
-- Fork build note: `Publish Helm chart` now skips a `vNNN-combined` tag instead
-  of failing on it, because that job takes the chart version from a plain
-  `vNNN` tag.
-
-## v266-combined (Oct 22, 2026)
-
-
-Fork build of upstream v266 with three branches merged: `feat/ui-auth`,
-`fix/1218-prompt-cached-tokens` and `feat/activity-speed-histogram`. The first
-two are described under v265-combined and are unchanged here.
-
-- feat/activity-speed-histogram: the Activity view plots prompt speed and
-  generation speed as a distribution on a log axis. The equal-width bins it
-  replaces put 24,431 of 24,434 generation samples in one bar, because three
-  one-token completions reported 1,000,000 tokens per second and stretched the
-  axis over six decades.
-- Each chart buckets rates on a geometric grid whose resolution adapts to the
-  plotted window, from 3 to 192 buckets per decade on a nested ladder, aiming at
-  16 bars and at least four requests per bar. One bar therefore covers the same
-  multiplicative range everywhere on the axis, and each chart states that range.
-- The plot runs from the 0.5th to the 99.5th percentile and draws a kink on the
-  axis where it clips a tail. Hover the kink for the count outside the window.
-- Rates that cannot describe throughput are dropped as the chart reads them:
-  prefill under 32 prompt tokens, decode under 2 generated tokens, and any rate
-  above 100,000 per second. Each chart states how many requests reported a rate,
-  how many were dropped and how many reported no timing at all, so a pooled
-  chart never implies it covers every request.
-- A percentile line appears only when at least five samples sit beyond it, so a
-  model fleet of 24 requests shows p50 and refuses p99.
-- No stored row changes meaning and the database needs no migration. The
-  `prompt_histogram` and `gen_histogram` fields of `GET /api/metrics/stats` keep
-  the old bins, and the speed distributions arrive in new fields, so an old web
-  UI works against this binary and a new web UI falls back against an old one.
-- Fork build note: `release.yml` drops the `trigger-tap-update` job. This fork
-  publishes no Homebrew tap, and the absent `TAP_REPO_PAT` secret made every
-  fork release report a failed run.
-
-## v265-combined (Oct 14, 2026)
-
-
-
-Fork build of upstream v265 with two branches merged: `feat/ui-auth` and
-`fix/1218-prompt-cached-tokens`.
-
-- feat/ui-auth: a new `auth.ui` setting. The default, `apiKeys`, keeps the
-  upstream behavior. With `none`, everything under `/ui/` has no
-  authentication, so a reverse proxy must gate it. Every other path still
-  requires an API key. The web UI sends every request through `/ui/` and holds
-  no key.
-- `auth.ui` and the base path support shipped in v265 share one URL layer:
-  `apiUrl()` adds the `/ui` door after it re-attaches a stripped proxy prefix.
-  Outside the browser the path is unchanged, so the docs-agent CLI keeps using
-  the public door and its API key.
-- `GET /logs` and `GET /upstream` stay on the public path. Their HTML redirect
-  target is relative to that path, so serving them through the door produced
-  `/ui/ui/`.
-- fix/1218-prompt-cached-tokens: the Activity page's `Prompt` column now means
-  the same thing for every backend. OpenAI-style `prompt_tokens` (vLLM) and
-  Responses API `input_tokens` include the cached prefix that `Cached` already
-  reports, so llama-swap subtracts it when it writes the row, to match
-  llama.cpp's `timings.prompt_n`. `Prefill` divides that count once, because
-  `buildMetrics` no longer subtracts the cached tokens itself. Anthropic-style
-  `input_tokens` already excludes `cache_read_input_tokens`, so it is left
-  alone. Activity rows written by earlier builds keep the old meaning.
-- Fork build note: `release.yml` drops the `trigger-tap-update` job. This fork
-  publishes no Homebrew tap, and the absent `TAP_REPO_PAT` secret made every
-  fork release report a failed run.
-
-## v264-combined (Oct 13, 2026)
-
-
-
-Fork build of upstream v264 with one feature branch merged.
-
-- feat/ui-auth: a new `auth.ui` setting. The default, `apiKeys`, keeps the
-  upstream behavior. With `none`, everything under `/ui/` has no
-  authentication, so a reverse proxy must gate it. Every other path still
-  requires an API key. The web UI sends every request through `/ui/` and holds
-  no key. The audio.cpp passthrough added in v264 sits behind the same door, so
-  `/ui/audiocpp/` keeps working with `auth.ui: none`.
-- Upstream v264 adds `models.capabilities.voices`, kubeswap DRA ResourceClaims
-  with NFS volumes, and a Wake-on-LAN confirmation UI.
-- Fork build note: `release.yml` drops the `trigger-tap-update` job. This fork
-  publishes no Homebrew tap, and the absent `TAP_REPO_PAT` secret made every
-  fork release report a failed run.
 
 ## v265 (Oct 14, 2026)
 
