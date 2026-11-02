@@ -114,7 +114,7 @@ func TestStore_ActivityTaskBackfill(t *testing.T) {
 }
 func TestActivity_StatsSpeedSamples(t *testing.T) {
 	ctx := context.Background()
-	st, err := New("")
+	st, err := New("", "")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestActivity_StatsSpeedSamples(t *testing.T) {
 
 func TestActivity_StatsSpeedWindowAndSupportGate(t *testing.T) {
 	ctx := context.Background()
-	st, err := New("")
+	st, err := New("", "")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
