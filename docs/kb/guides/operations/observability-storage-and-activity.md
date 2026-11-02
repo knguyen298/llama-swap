@@ -122,7 +122,10 @@ an issue.
 ## Speed charts on the Activity view
 
 The Activity cards plot prompt tokens per second and generated tokens per second,
-one value per request. Each chart uses a log axis, so every bucket covers the
+one value per request. The plotted prompt rate is the rate the backend applied to
+the tokens it computed, the same number the `Prefill` column shows. It is not
+`Prompt` divided by a time, because `Prompt` includes the cached part of the
+prompt and a cached token costs no compute. Each chart uses a log axis, so every bucket covers the
 same multiplicative range. The grid starts at 12 buckets per decade. It gets
 finer, up to 192, when the plotted range is too narrow to fill 16 bars, and
 coarser, down to 3, when the chart would otherwise draw more bars than requests,
