@@ -21,6 +21,41 @@ metricsMaxInMemory: 1000
 captureBuffer: 100
 ```
 
+## Prompt, Cached and Prefill columns
+
+Each backend spells its token counts differently and means different things by
+them. llama-swap normalizes them when it writes a row, so one meaning holds for
+every backend. `docs/development/upstream-compat.md` lists the rules for each
+upstream.
+
+- `Prompt` is the whole prompt, cached tokens included.
+- `Cached` is the part of `Prompt` the backend reused from its own prefix cache.
+  Adding `Cached` to `Prompt` counts those tokens twice.
+- `Prefill` is prompt tokens per second for the tokens the backend computed. The
+  cached part is not in the numerator. llama.cpp, TabbyAPI and oMLX report this
+  rate. For vLLM, llama-swap divides `Prompt` minus `Cached` by the prefill time,
+  which is `time_to_first_token_ms` less `queue_time_ms`.
+
+How each backend reports it:
+
+- llama.cpp sends `timings.prompt_n`, which counts only computed tokens, and
+  `timings.cache_n`. llama-swap stores the sum as `Prompt`.
+- The OpenAI shape sends `usage.prompt_tokens` with the cached prefix already
+  inside it, and `usage.prompt_tokens_details.cached_tokens` beside it.
+- Anthropic's `input_tokens` leaves out both cache counts, so llama-swap adds
+  `cache_read_input_tokens` and `cache_creation_input_tokens` back.
+
+What goes wrong:
+
+- Rows written before v269 mix the two meanings. A llama.cpp row stored
+  `prompt_n` alone, so its `Prompt` left out `Cached`, while an OpenAI-style row
+  stored `prompt_tokens` and included it. Old rows are not rewritten.
+- vLLM reports a cached count only with `--enable-prompt-tokens-details`. Without
+  it `Cached` shows `-`, llama-swap cannot split the prompt, and `Prefill` uses
+  the whole prompt.
+- A request that reports neither timings nor a rate adds no point to the speed
+  charts on the Activity view.
+
 ## Log streams
 
 llama-swap keeps three log streams. Each has its own tab on the UI's Logs page
