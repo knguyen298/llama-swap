@@ -2,9 +2,9 @@
 title: Observability, storage and Activity
 summary: Use logs, metrics, captures and the Activity view to diagnose requests and retain useful history.
 category: guides
-tags: [operations, logs, metrics, activity, captures, stdout, http]
+tags: [operations, logs, metrics, activity, captures, stdout, http, realtime, websocket]
 config_keys: [logLevel, logToStdout, metricsMaxInMemory, captureBuffer, store.path, store.persistCaptures]
-updated: 2026-10-31
+updated: 2026-11-03
 ---
 
 # Observability, storage and Activity
@@ -20,6 +20,20 @@ logToStdout: "proxy,http"
 metricsMaxInMemory: 1000
 captureBuffer: 100
 ```
+
+## Hipfire request metrics
+
+Hipfire is detected automatically from `owned_by: hipfire` in `/v1/models`.
+No metrics configuration is needed: JSON and streaming responses use the API
+usage counts and `timings.prefill_tok_s` / `timings.decode_tok_s` for the
+Activity view's Prefill and Decode columns. Cached prompt tokens are included
+in the input count, not added a second time.
+
+If Hipfire reports no decode rate (for example on a multi-slot route), Decode
+stays unknown. `hipfire.tok_s` includes prefill time and is not used as a decode
+fallback. `tau` and `cycles` are not draft/accepted token counters, so those
+columns stay unknown too. Hipfire's model listing does not report context
+length or tool/vision capabilities; configure those manually when needed.
 
 ## Prompt, Cached and Prefill columns
 
@@ -115,47 +129,27 @@ What goes wrong:
   same capture ID. The second capture is skipped with a warning; the first
   is never overwritten.
 
-Do not put secrets in captures or debug logs. Reduce retention after diagnosing
-an issue.
+## Realtime sessions
 
-## Speed charts on the Activity view
+A `/v1/realtime` websocket (the Playground's Realtime tab, or any OpenAI
+Realtime client) is one Activity row, written when the socket closes. Its task
+is `realtime`, its status `101` and its duration the whole session. llama-swap
+reads the session's events as they pass through and fills in:
 
-The Activity cards plot prompt tokens per second and generated tokens per second,
-one value per request. The plotted prompt rate is the rate the backend applied to
-the tokens it computed, the same number the `Prefill` column shows. It is not
-`Prompt` divided by a time, because `Prompt` includes the cached part of the
-prompt and a cached token costs no compute. Each chart uses a log axis, so every bucket covers the
-same multiplicative range. The grid starts at 12 buckets per decade. It gets
-finer, up to 192, when the plotted range is too narrow to fill 16 bars, and
-coarser, down to 3, when the chart would otherwise draw more bars than requests,
-which is four requests per bar. A model that runs at 60 tokens/sec within 10
-percent therefore draws about 17 bars, not 2. Each chart states the factor one bar covers, so two time
-ranges stay comparable. The Y axis is the share of the reported requests, not a
-raw count.
-
-llama-swap drops a rate when it cannot describe throughput:
-
-- a prefill rate for a prompt shorter than 32 tokens, because the value then
-  measures request overhead. The median reported rate is 5 tokens/sec for
-  one-token prompts and 186 tokens/sec for 32 to 127 tokens.
-- a generation rate for a completion shorter than 2 tokens, because an
-  inter-token latency needs a gap between two tokens.
-- any rate above 100,000 tokens/sec.
-
-The line above each chart states how many requests reported a rate and how many
-were dropped. Rates are also clipped to a display window of the 0.5th to the
-99.5th percentile. Hover the kink at an end of the axis to see how many requests
-sit outside that window. The p50, p90, p95 and p99 lines are always drawn, each
-with its own dash pattern. Hover a bar to print its bucket range and its
-request count in the two rows above the chart. Hover a percentile line to print
-its value in one of those rows. A percentile line appears only when at least
-five samples sit beyond it, so a small model fleet shows fewer lines than a large
-one.
+- Generated: the sum of every reply's `output_tokens`.
+- Decode: those tokens over the time from each reply's first output to its
+  end. Prompt and Prefill stay empty; llama-server reports neither.
+- Meta: `session` id, `replies`, `interrupted` (replies cancelled by talking
+  over them), `audio_in` and `audio_out` in seconds, `text_messages`, and
+  `errors` with the `last_error` message.
 
 What goes wrong:
 
-- An upstream that reports no timings adds no samples. A pooled chart therefore
-  describes only the requests that reported rates, and it mixes every model.
-  Filter by model before you compare speeds.
-- A pooled chart shows the mix of your models, not the speed of any one of them.
-  Two humps usually mean two models, not one unstable model.
+- No row appears until the session ends. A session left open has no row yet;
+  it shows on the Activity page's in-flight list instead.
+- A refused upgrade, such as a model that fails to start, is recorded as an
+  ordinary failed request with its error, not as a session.
+- Sessions have no capture. Their traffic is mostly base64 audio.
+
+Do not put secrets in captures or debug logs. Reduce retention after diagnosing
+an issue.
