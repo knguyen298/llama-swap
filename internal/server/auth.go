@@ -37,11 +37,25 @@ func CreateAuthMiddleware(cfg config.Config) chain.Middleware {
 //   - apiKeys (default): the API key check, so apiKeys guard the web UI as
 //     they always have.
 //   - none: no check. A reverse proxy must gate the web UI.
+//
+// A Tailcat request always gets the API key check, in both modes. Tailcat
+// traffic arrives on its own listener and never passes the reverse proxy, so
+// none mode would leave the web UI open to it.
 func CreateUIAuthMiddleware(cfg config.Config) chain.Middleware {
-	if cfg.Auth.UIMode() == config.UIAuthNone {
-		return func(next http.Handler) http.Handler { return next }
+	keyCheck := CreateAuthMiddleware(cfg)
+	if cfg.Auth.UIMode() != config.UIAuthNone {
+		return keyCheck
 	}
-	return CreateAuthMiddleware(cfg)
+	return func(next http.Handler) http.Handler {
+		guarded := keyCheck(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isTailcatRequest(r.Context()) {
+				guarded.ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func hasValidAPIKey(r *http.Request, keys []string) bool {
@@ -81,12 +95,27 @@ func publicDoor(inner *http.ServeMux, mw chain.Chain) http.Handler {
 // serves it with the original path. The caller applies the auth.ui check in
 // front of this handler.
 //
+// A request whose /ui/ prefix is percent-encoded, such as /%75i/, gets a 404.
+//
+// A wrong method gets a 405, as it does at the public door. If inner has the
+// path under a different method, inner answers with its own Allow header.
+// Static files are read-only, so any other request that is not a GET or a
+// HEAD gets a 405 too.
+//
 // Redirects need no door awareness here: the handlers send a Location relative
 // to the requested URL (see redirectRelative), so a request that arrived on
 // /ui/comfyui redirects to /ui/comfyui/ and stays behind this door. The same
 // relative Location keeps a reverse proxy's stripped path prefix intact.
 func uiDoor(inner *http.ServeMux, static http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The prefix must be the literal text /ui/. ServeMux decodes the path
+		// before it matches, so /%75i/ also arrives here. A reverse proxy that
+		// matches on the raw path does not see that request as /ui/ and can
+		// let it through without a login.
+		if !strings.HasPrefix(r.URL.EscapedPath(), uiPrefix+"/") {
+			http.NotFound(w, r)
+			return
+		}
 		if !strings.HasPrefix(r.URL.Path, uiPrefix+"/") {
 			static.ServeHTTP(w, r)
 			return
@@ -94,12 +123,54 @@ func uiDoor(inner *http.ServeMux, static http.Handler) http.Handler {
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = strings.TrimPrefix(r.URL.Path, uiPrefix)
 		r2.URL.RawPath = swaputil.EscapedPathSuffix(r.URL.EscapedPath(), uiPrefix)
-		if _, pattern := inner.Handler(r2); pattern == "" {
-			static.ServeHTTP(w, r)
+		h, pattern := inner.Handler(r2)
+		if pattern != "" {
+			inner.ServeHTTP(w, r2)
 			return
 		}
-		inner.ServeHTTP(w, r2)
+		if isMethodNotAllowed(h, r2) {
+			h.ServeHTTP(w, r2)
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		static.ServeHTTP(w, r)
 	})
+}
+
+// isMethodNotAllowed reports whether h, the handler a ServeMux returned with
+// an empty pattern, answers 405. ServeMux returns an empty pattern for both
+// "no such path" and "path exists under another method", and the status is
+// the only way to tell them apart. Both handlers only write an error, so the
+// call has no side effects.
+func isMethodNotAllowed(h http.Handler, r *http.Request) bool {
+	probe := statusProbe{header: http.Header{}}
+	h.ServeHTTP(&probe, r)
+	return probe.status == http.StatusMethodNotAllowed
+}
+
+// statusProbe is a ResponseWriter that keeps the status and drops the body.
+type statusProbe struct {
+	header http.Header
+	status int
+}
+
+func (p *statusProbe) Header() http.Header { return p.header }
+
+func (p *statusProbe) WriteHeader(status int) {
+	if p.status == 0 {
+		p.status = status
+	}
+}
+
+func (p *statusProbe) Write(b []byte) (int, error) {
+	if p.status == 0 {
+		p.status = http.StatusOK
+	}
+	return len(b), nil
 }
 
 // CreateRequestContextMiddleware returns middleware that extracts model and

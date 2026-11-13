@@ -72,8 +72,11 @@ export default defineConfig({
       process.env.UI_DEV_TLS_CERT && process.env.UI_DEV_TLS_KEY
         ? { cert: fs.readFileSync(process.env.UI_DEV_TLS_CERT), key: fs.readFileSync(process.env.UI_DEV_TLS_KEY) }
         : undefined,
+    // "/ui" is the UI door: apiUrl() in lib/apiPath.ts sends every request the
+    // web UI makes under it, for example /ui/api/version. The dev server
+    // serves the document at "/", so nothing of its own lives under /ui.
     proxy: Object.fromEntries(
-      ["/api", "/logs", "/upstream", "/unload", "/v1", "/sdapi"].map((path) => [
+      ["/ui", "/api", "/logs", "/upstream", "/unload", "/v1", "/sdapi"].map((path) => [
         path,
         // ws: forwards websocket upgrades too, for /v1/realtime
         { target: process.env.LLAMA_SWAP_URL ?? "http://localhost:8080", ws: true },
