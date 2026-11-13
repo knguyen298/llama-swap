@@ -34,14 +34,18 @@ jobs:
           NOTES: ${{ runner.temp }}/release-notes.md
         run: |
           # each release is one file; drop the leading "## <tag>" heading
+          # fork: a vNNN-combined entry lives in changelog/fork/, outside the
+          # v*.md files that the changelog package embeds and lists
           if [ -f "changelog/${TAG}.md" ]; then
             tail -n +2 "changelog/${TAG}.md" > "${NOTES}"
+          elif [ -f "changelog/fork/${TAG}.md" ]; then
+            tail -n +2 "changelog/fork/${TAG}.md" > "${NOTES}"
           else
             : > "${NOTES}"
           fi
 
           if ! grep -q '[^[:space:]]' "${NOTES}"; then
-            echo "::error::no changelog/${TAG}.md entry for ${TAG}, run make release to generate it"
+            echo "::error::no changelog/${TAG}.md or changelog/fork/${TAG}.md entry for ${TAG}"
             exit 1
           fi
       - name: Set up Node.js
