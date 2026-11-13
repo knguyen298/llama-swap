@@ -185,7 +185,8 @@ var modelGetRoutes = []string{
 	"/sdapi/v1/loras",
 	"/props",
 
-	// websocket upgrade, OpenAI Realtime API style (?model=...)
+	// websocket upgrade, OpenAI Realtime API style (?model=..., or the
+	// model named by the first session.update event)
 	"/v1/realtime",
 }
 
@@ -415,6 +416,9 @@ func (s *Server) routes() {
 
 	inner := http.NewServeMux()
 	dispatch := http.HandlerFunc(s.localPeerHandler)
+	// doorChecked stands in where an upstream helper asks for the auth
+	// middleware: every request on inner already passed a door.
+	doorChecked := func(next http.Handler) http.Handler { return next }
 	modelMWs := []chain.Middleware{createContentTypeMiddleware(s.cfg.MaxRequestBodyBytes())}
 	// globalConcurrencyLimit guards the top of the inference chain; a limit of
 	// 0 (the default) means no limit, so the handler is left out of the chain
@@ -439,7 +443,19 @@ func (s *Server) routes() {
 		inner.Handle("POST "+path, modelChain.Then(dispatch))
 	}
 	for _, path := range modelGetRoutes {
-		inner.Handle("GET "+path, modelChain.Then(dispatch))
+		h := modelChain.Then(dispatch)
+		switch path {
+		case "/v1/realtime":
+			// Realtime transcription clients name the model in a
+			// session.update event rather than the URL; see realtime_defer.go.
+			// The door in front of inner already did the auth check, so the
+			// deferred path needs no check of its own.
+			h = deferRealtimeModel(doorChecked, h)
+		case "/props":
+			// autoload=false must not start the model; see props.go.
+			h = modelChain.ThenFunc(s.handleProps)
+		}
+		inner.Handle("GET "+path, h)
 	}
 
 	// llama-swap API + custom endpoints.

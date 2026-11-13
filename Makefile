@@ -45,11 +45,11 @@ test-dev:
 	staticcheck ./... || true
 
 test:
-	go test -short -count=1 ./internal/...
+	go test -short -count=1 ./internal/... ./docs/... ./docbot/...
 
 # for CI - full test (takes longer)
 test-all:
-	go test -race -count=1 ./internal/...
+	go test -race -count=1 ./internal/... ./docs/... ./docbot/...
 
 # Test suites for the cmd utilities (kubeswap, vllm-wrapper). Kept
 # separate from test-all: those packages are unix-only (vllm-wrapper
@@ -160,8 +160,8 @@ release:
 	@highest_tag=$$(git tag --sort=-v:refname | grep -E '^v[0-9]+$$' | head -n 1 || echo "v0"); \
 	new_tag="v$$(( $${highest_tag#v} + 1 ))"; \
 	echo "Checking for a changelog entry for: $$new_tag"; \
-	if ! grep -qE "^## $$new_tag( |$$)" CHANGELOG.md; then \
-		echo "Error: CHANGELOG.md has no entry for $$new_tag. Add a '## $$new_tag' section and commit it." >&2; \
+	if [ ! -f "changelog/$$new_tag.md" ]; then \
+		echo "Error: changelog/$$new_tag.md does not exist. Add it (scripts/add-changelog.sh) and commit it." >&2; \
 		exit 1; \
 	fi; \
 	echo "tagging new version: $$new_tag"; \

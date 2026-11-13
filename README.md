@@ -9,6 +9,10 @@ Run multiple generative AI models on your machine and hot-swap between them on d
 
 Built in Go for performance and simplicity, llama-swap has zero dependencies and is incredibly easy to set up. Get started in minutes - just one binary and one configuration file.
 
+> [!TIP]
+> Got questions about configuring llama-swap? Try out the [Chat agent on llama-swap.ai](https://llama-swap.ai/docs/chat).
+> It runs entirely in your browser and is powered by [LFM3-1.7B fine tuned](https://huggingface.co/llama-swap/LFM3-1.7B-HelpAgent) on the docs.
+
 ## Features:
 
 - ✅ Easy to deploy and configure: one binary, one configuration file. no external dependencies
@@ -23,7 +27,7 @@ Built in Go for performance and simplicity, llama-swap has zero dependencies and
   - `v1/audio/speech` ([#36](https://github.com/mostlygeek/llama-swap/issues/36))
   - `v1/audio/transcriptions` ([docs](https://github.com/mostlygeek/llama-swap/issues/41#issuecomment-2722637867))
   - `v1/audio/voices`
-  - `v1/realtime` - websocket, requires `?model={model_id}` query parameter
+  - `v1/realtime` - websocket, model from the `?model={model_id}` query parameter or the first `session.update` event
   - `v1/images/generations`
   - `v1/images/edits`
 - ✅ Anthropic API supported endpoints:

@@ -32,17 +32,6 @@ type modelRecord struct {
 	Status              map[string]any `json:"status"`
 }
 
-// cappedMetadataKeys are top-level /v1/models fields produced by the
-// capabilities renderer. If a model's metadata block defines any of these
-// keys, the renderer's values win and the metadata keys are dropped.
-var cappedMetadataKeys = map[string]struct{}{
-	"architecture":         {},
-	"capabilities":         {},
-	"supported_parameters": {},
-	"context_length":       {},
-	"context_window":       {},
-}
-
 // renderCapabilities converts a model's capabilities config into additional
 // /v1/models fields. Returns zero values when caps.Empty() is true.
 func renderCapabilities(caps config.ModelCapConfig) (arch map[string]any, capsMap map[string]any, params []string, ctxLen int) {
@@ -75,6 +64,9 @@ func renderCapabilities(caps config.ModelCapConfig) (arch map[string]any, capsMa
 		if contains(caps.In, "image") {
 			capsMap["vision"] = true
 		}
+	}
+	if hasOut && contains(caps.Out, "decisions") {
+		capsMap["decisions"] = true
 	}
 	if hasIn && hasOut {
 		if contains(caps.In, "audio") && contains(caps.Out, "text") {
@@ -121,23 +113,6 @@ func contains(ss []string, s string) bool {
 	return false
 }
 
-// filterCappedMetadata returns metadata with renderer-owned keys removed.
-func filterCappedMetadata(md map[string]any) map[string]any {
-	if len(md) == 0 {
-		return nil
-	}
-	filtered := make(map[string]any, len(md))
-	for k, v := range md {
-		if _, capped := cappedMetadataKeys[k]; !capped {
-			filtered[k] = v
-		}
-	}
-	if len(filtered) == 0 {
-		return nil
-	}
-	return filtered
-}
-
 // handleListModels serves the OpenAI-compatible model listing: local models
 // (with optional aliases) plus peer models.
 func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
@@ -173,9 +148,9 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 		// context_window mirrors context_length for OpenAI-compatible gateways
 		// (e.g. Bifrost) that read the context size from this field name.
 		rec.ContextWindow = rec.ContextLength
-		if !caps.Empty() {
-			metadata = filterCappedMetadata(metadata)
-		}
+		// Custom metadata is nested under meta.llamaswap, so its keys never
+		// collide with the top-level fields rendered from capabilities and is
+		// passed through as configured.
 		llamaSwapMetadata := make(map[string]any, len(metadata)+len(internalMetadata))
 		for key, value := range metadata {
 			llamaSwapMetadata[key] = value
@@ -395,7 +370,12 @@ func (d *discardResponseWriter) Header() http.Header {
 
 func (d *discardResponseWriter) Write(p []byte) (int, error) { return len(p), nil }
 
-func (d *discardResponseWriter) WriteHeader(status int) { d.status = status }
+func (d *discardResponseWriter) WriteHeader(status int) {
+	if swaputil.IsInformationalStatus(status) {
+		return
+	}
+	d.status = status
+}
 
 // startPreload fires a background GET / at every model named in
 // Hooks.OnStartup.Preload so they are warm before the first real request.
