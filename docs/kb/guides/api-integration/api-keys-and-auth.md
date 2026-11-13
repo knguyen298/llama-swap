@@ -4,7 +4,7 @@ summary: apiKeys guard the public API; auth.ui can hand web UI login to a revers
 category: guides
 tags: [security, api-keys, auth, secrets, env, rate-limit, users, permissions, access-control, web-ui, reverse-proxy, authelia]
 config_keys: [apiKeys, auth.ui, macros, peers.*.apiKey, models.*.env]
-updated: 2026-09-06
+updated: 2026-11-13
 ---
 
 # API keys and keeping secrets out of your config
@@ -95,6 +95,14 @@ door. An API key means inference through the public door. The two never cross.
 - Publish llama-swap only to the proxy. With `ui: none`, anything that can
   reach the port directly gets the whole web UI, including inference.
   llama-swap logs a warning at startup as a reminder.
+
+llama-swap accepts only the literal prefix `/ui/` at the UI door. A request
+with a percent-encoded prefix, such as `/%75i/`, gets a 404. Some proxies
+match rules on the raw path and do not apply the `/ui/` login rule to that
+request.
+
+A Tailcat client always needs an API key for `/ui/`, in both modes. Tailcat
+traffic does not pass the reverse proxy.
 
 `auth.ui` does not change what an API key can do outside the web UI. An
 inference key can still call `/unload` and `/api/models/unload`, as it can

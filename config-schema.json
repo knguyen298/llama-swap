@@ -751,12 +751,12 @@
                         "none"
                     ],
                     "default": "apiKeys",
-                    "description": "How the web UI is authenticated. apiKeys: everything under /ui/ requires an API key. none: everything under /ui/ has no authentication, and a reverse proxy must gate it. Every path outside /ui/ always requires an API key."
+                    "description": "How the web UI is authenticated. apiKeys: paths under /ui/ require an API key, except the web app manifest and its two icons. none: everything under /ui/ has no authentication, and a reverse proxy must gate it. Paths outside /ui/ require an API key in both modes, except /health, /wol-health, /favicon.ico and the / redirect."
                 }
             },
             "additionalProperties": false,
             "default": {},
-            "description": "Web UI authentication mode. Paths outside /ui/ always use apiKeys."
+            "description": "Web UI authentication mode. Paths outside /ui/ use apiKeys in every mode."
         },
         "tailcat": {
             "type": "object",

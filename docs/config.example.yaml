@@ -209,14 +209,15 @@ apiKeys:
 
 # auth: how the web UI is authenticated
 # - optional, default: ui: apiKeys (apiKeys guard the web UI too)
-# - every path outside /ui/ always requires apiKeys, whatever ui is set to
+# - paths outside /ui/ require apiKeys whatever ui is set to, except the
+#   health checks, /favicon.ico and the / redirect, which never need a key
 # - the web UI makes all of its requests under /ui/, for example
 #   /ui/v1/chat/completions, and the server runs the same handler as /v1/
 auth:
   # ui: apiKeys | none
   # - apiKeys: /ui/ requires an API key (default)
   # - none: /ui/ has no authentication; a reverse proxy must gate it
-  ui: none
+  ui: apiKeys
 
 # security: settings that control who may talk to llama-swap
 # - optional, omit the whole block to allow any origin (the legacy default)

@@ -485,6 +485,12 @@ func (s *Server) routes() {
 	// The /upstream -> models-page convenience redirect is registered on the
 	// outer mux below, not here: its target is relative to the public path, so
 	// serving it through the UI door would resolve to /ui/ui/.
+	//
+	// The exact /upstream pattern answers 404. Without it the mux adds a
+	// trailing slash for the pattern below and redirects /ui/upstream to an
+	// absolute /upstream/, which leaves the UI door and drops a reverse proxy's
+	// path prefix.
+	inner.HandleFunc("/upstream", http.NotFound)
 	inner.Handle("/upstream/{upstreamPath...}", upstreamChain.ThenFunc(s.handleUpstream))
 
 	// ComfyUI compatibility passthrough. This uses the fixed comfyui_auto model,

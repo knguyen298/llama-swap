@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -386,4 +387,129 @@ func resolveAgainst(t *testing.T, request, location string) string {
 		t.Fatalf("parse location %q: %v", location, err)
 	}
 	return base.ResolveReference(ref).RequestURI()
+}
+
+// TestServer_UIDoor_Methods: a wrong method under /ui/ gets a 405, as it does
+// at the public door, and never the web UI's index page.
+func TestServer_UIDoor_Methods(t *testing.T) {
+	s := authServer(t, noneYAML)
+	for _, tc := range []struct {
+		method, target string
+		want           int
+		wantAllow      string
+	}{
+		// The path exists on inner under another method: inner's own 405.
+		{http.MethodDelete, "/ui/api/version", http.StatusMethodNotAllowed, "GET, HEAD"},
+		{http.MethodGet, "/ui/v1/chat/completions", http.StatusMethodNotAllowed, "POST"},
+		// No handler anywhere: static files only answer GET and HEAD.
+		{http.MethodPost, "/ui/nope", http.StatusMethodNotAllowed, "GET, HEAD"},
+		{http.MethodPost, "/ui/", http.StatusMethodNotAllowed, "GET, HEAD"},
+		// A GET with no handler still reaches the static files (404 here: the
+		// test binary embeds none).
+		{http.MethodGet, "/ui/nope", http.StatusNotFound, ""},
+		{http.MethodHead, "/ui/nope", http.StatusNotFound, ""},
+	} {
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, httptest.NewRequest(tc.method, tc.target, nil))
+		if w.Code != tc.want {
+			t.Errorf("%s %s status = %d, want %d", tc.method, tc.target, w.Code, tc.want)
+		}
+		if got := w.Header().Get("Allow"); got != tc.wantAllow {
+			t.Errorf("%s %s Allow = %q, want %q", tc.method, tc.target, got, tc.wantAllow)
+		}
+	}
+}
+
+// TestServer_UIDoor_BareUpstream: /ui/upstream must not get the mux's
+// trailing-slash redirect, whose absolute Location leaves the UI door.
+func TestServer_UIDoor_BareUpstream(t *testing.T) {
+	s := authServer(t, noneYAML)
+	for _, tc := range []struct {
+		method, target, key string
+		want                int
+	}{
+		{http.MethodGet, "/ui/upstream", "", http.StatusNotFound},
+		{http.MethodPost, "/ui/upstream", "", http.StatusNotFound},
+		// The public convenience redirect to the Models page is unchanged.
+		{http.MethodGet, "/upstream", "", http.StatusFound},
+		{http.MethodPost, "/upstream", "", http.StatusUnauthorized},
+		{http.MethodPost, "/upstream", "secret", http.StatusNotFound},
+	} {
+		r := httptest.NewRequest(tc.method, tc.target, nil)
+		if tc.key != "" {
+			r.Header.Set("Authorization", "Bearer "+tc.key)
+		}
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code != tc.want {
+			t.Errorf("%s %s key=%q status = %d, want %d", tc.method, tc.target, tc.key, w.Code, tc.want)
+		}
+		if loc := w.Header().Get("Location"); strings.HasPrefix(loc, "/") {
+			t.Errorf("%s %s Location = %q, want no absolute redirect", tc.method, tc.target, loc)
+		}
+	}
+}
+
+// TestServer_UIDoor_Tailcat: a Tailcat request never passes the reverse proxy,
+// so the UI door keeps the API key check for it even in none mode.
+func TestServer_UIDoor_Tailcat(t *testing.T) {
+	s := authServer(t, noneYAML)
+	for _, tc := range []struct {
+		key  string
+		want int
+	}{
+		{"", http.StatusUnauthorized},
+		{"wrong", http.StatusUnauthorized},
+		{"secret", http.StatusOK},
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/ui/api/version", nil)
+		r = r.WithContext(context.WithValue(r.Context(), tailcatRequestContextKey{}, true))
+		if tc.key != "" {
+			r.Header.Set("Authorization", "Bearer "+tc.key)
+		}
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code != tc.want {
+			t.Errorf("tailcat /ui/api/version key=%q status = %d, want %d", tc.key, w.Code, tc.want)
+		}
+	}
+}
+
+// TestServer_UIDoor_EncodedPrefix: the UI door only accepts the literal /ui/
+// prefix. An encoded prefix decodes to /ui/ in ServeMux, but a reverse proxy
+// that matches on the raw path would not apply its /ui/ login rule to it.
+func TestServer_UIDoor_EncodedPrefix(t *testing.T) {
+	for _, yml := range []string{noneYAML, ""} {
+		s := authServer(t, yml)
+		for _, tc := range []struct {
+			target string
+			want   int
+		}{
+			{"/%75i/api/version", http.StatusNotFound},
+			{"/u%69/api/version", http.StatusNotFound},
+			{"/%75%69/api/version", http.StatusNotFound},
+			{"/%75i/", http.StatusNotFound},
+			{"/ui%2Fapi/version", http.StatusNotFound},
+			// Encoding after the literal prefix is fine: the proxy already
+			// matched /ui/.
+			{"/ui/%61pi/version", http.StatusOK},
+			{"/ui/api/version", http.StatusOK},
+		} {
+			r := httptest.NewRequest(http.MethodGet, tc.target, nil)
+			r.Header.Set("Authorization", "Bearer secret")
+			w := httptest.NewRecorder()
+			s.ServeHTTP(w, r)
+			if w.Code != tc.want {
+				t.Errorf("mode %q GET %s status = %d, want %d", yml, tc.target, w.Code, tc.want)
+			}
+		}
+	}
+
+	// None mode, no key: the encoded prefix must not reach a handler.
+	s := authServer(t, noneYAML)
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/%75i/api/version", nil))
+	if w.Code != http.StatusNotFound {
+		t.Errorf("none mode, no key, GET /%%75i/api/version status = %d, want 404", w.Code)
+	}
 }

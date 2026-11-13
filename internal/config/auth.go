@@ -16,7 +16,8 @@ const (
 )
 
 // AuthConfig controls how the web UI, everything under /ui/, is
-// authenticated. Every path outside /ui/ always requires apiKeys.
+// authenticated. Paths outside /ui/ use apiKeys in every mode; the few
+// that never need a key (/health, /wol-health, /favicon.ico, /) stay open.
 type AuthConfig struct {
 	// UI selects the web UI mode: apiKeys (default) or none.
 	UI string `yaml:"ui"`
